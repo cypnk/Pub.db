@@ -813,18 +813,22 @@ CREATE VIEW login_view AS SELECT
 	users.status AS status, 
 	users.username AS name, 
 	users.password AS password, 
-	users.settings AS user_settings, 
+	us.info AS user_settings,
+	users.settings_override AS user_settings_override, 
 	ua.is_approved AS is_approved, 
 	ua.is_locked AS is_locked, 
 	ua.expires AS expires, 
-	settings.label AS setting_label,
-	settings.info AS settings, 
-	logins.settings_override AS settings_override
+	ls.info AS login_settings,
+	logins.settings_override AS login_settings_override
+	ts.info AS auth_settings,
+	ua.settings_override AS auth_settings_override
 	
 	FROM logins
 	JOIN users ON logins.user_id = users.id
 	LEFT JOIN user_auth ua ON users.id = ua.user_id
-	LEFT JOIN settings ON logins.setting_id = settings.id;-- --
+	LEFT JOIN settings us ON users.setting_id = us.id
+	LEFT JOIN settings ts ON ua.setting_id = ts.id
+	LEFT JOIN settings ls ON logins.setting_id = ls.id;-- --
 
 -- Post-login user data
 CREATE VIEW user_view AS SELECT 
@@ -833,20 +837,22 @@ CREATE VIEW user_view AS SELECT
 	users.status AS status, 
 	users.username AS username, 
 	users.password AS password, 
-	users.settings AS user_settings, 
 	users.hash AS hash,
 	ua.is_approved AS is_approved, 
 	ua.is_locked AS is_locked, 
 	ua.expires AS expires, 
 	us.created AS created, 
-	us.updated AS updated,
-	settings.info AS settings, 
-	users.settings_override AS settings_override
+	us.updated AS updated, 
+	us.info AS settings, 
+	users.settings_override AS settings_override, 
+	ts.info AS auth_settings,
+	ua.settings_override AS auth_settings_override
 	
 	FROM users
 	LEFT JOIN user_auth ua ON users.id = ua.user_id
 	LEFT JOIN user_stats us ON users.id = us.user_id
-	LEFT JOIN settings ON users.setting_id = settings.id;-- --
+	LEFT JOIN settings ts ON ua.setting_id = ts.id
+	LEFT JOIN settings us ON users.setting_id = us.id;-- --
 	
 
 
