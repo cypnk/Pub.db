@@ -1357,7 +1357,7 @@ CREATE UNIQUE INDEX idx_entry_collection ON
 	entry_collections( entry_id, collection_id );-- --
 
 
--- New entry, generate UUID, create search
+-- New entry, generate UUID
 CREATE TRIGGER entry_insert AFTER INSERT ON entries FOR EACH ROW
 BEGIN
 	INSERT INTO entry_meta( entry_id, urn ) 
@@ -1465,6 +1465,21 @@ BEGIN
 		WHERE id = NEW.id;
 END;-- --
 
+CREATE VIEW person_view AS SELECT 
+	p.id AS id,
+	p.urn AS urn,
+	p.user_id AS user_id,
+	p.status AS person_status,
+	d.title AS title,
+	d.name AS name,
+	d.uri AS uri,
+	d.bio AS bio,
+	d.contact AS contact,
+	d.language_id AS language_id
+
+	FROM persons p
+	LEFT JOIN person_desc d AS p.id = d.person_id;-- --
+
 
 -- Editor ownership and collaboration
 CREATE TABLE authors (
@@ -1540,7 +1555,7 @@ CREATE TABLE place_map(
 	CONSTRAINT fk_map_place
 		FOREIGN KEY ( place_id ) 
 		REFERENCES places ( id )
-		ON DELETE SET NULL
+		ON DELETE CASCADE
 	
 );-- --
 CREATE INDEX idx_place_map ON place_map( place_id );-- --
