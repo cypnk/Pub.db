@@ -819,7 +819,7 @@ CREATE VIEW login_view AS SELECT
 	ua.is_locked AS is_locked, 
 	ua.expires AS expires, 
 	ls.info AS login_settings,
-	logins.settings_override AS login_settings_override
+	logins.settings_override AS login_settings_override,
 	ts.info AS auth_settings,
 	ua.settings_override AS auth_settings_override
 	
@@ -1347,6 +1347,55 @@ CREATE VIRTUAL TABLE entry_content_search
 	USING fts4( content, tokenize=unicode61 );-- --
 
 
+
+
+-- Entry description view
+CREATE VIEW entry_view AS SELECT 
+	e.id AS id, 
+	
+	em.urn AS urn, 
+	em.created AS created, 
+	em.updated AS updated, 
+	em.published AS published, 
+	em.sort_order AS sort_order, 
+	em.status AS status, 
+	
+	ed.title AS title, 
+	ed.slug AS slug, 
+	ed.summary AS summary, 
+	ed.rights AS rights,  
+	ed.language_id AS language_id, 
+	
+	e.is_draft AS is_draft, 
+	et.info AS type_settings, 
+	t.settings_override AS type_settings_override, 
+	es.settings AS entry_settings, 
+	e.settings_override AS settings_override
+	
+	FROM entries e 
+	INNER JOIN entry_meta em ON e.id = em.entry_id 
+	INNER JOIN entry_types t ON e.type_id = t.id 
+	LEFT JOIN entry_desc ed ON e.id = ed.entry_id 
+	LEFT JOIN settings et ON t.settings_id = et.id 
+	LEFT JOIN settings es ON e.settings_id = es.id;-- --
+
+
+-- Content edit view
+-- Usage:
+-- SELECT * FROM entry_view WHERE entry_content.entry_id = :id
+CREATE VIEW entry_content_view AS SELECT
+	entry_content.id AS id,
+	entries.id AS entry_id, 
+	entries.title AS entry_title, 
+	ec.content AS content,
+	ec.language_id AS language_id
+	
+	FROM entry_content ec
+	INNER JOIN entries ON ec.entry_id = entries.id
+	ORDER BY ec.created DESC;-- --
+
+
+-- Entry trigger actions
 CREATE TABLE entry_collections(
 	entry_id INTEGER NOT NULL REFERENCES entries ( id )
 		ON DELETE CASCADE,
@@ -1478,7 +1527,7 @@ CREATE VIEW person_view AS SELECT
 	d.language_id AS language_id
 
 	FROM persons p
-	LEFT JOIN person_desc d AS p.id = d.person_id;-- --
+	LEFT JOIN person_desc d ON p.id = d.person_id;-- --
 
 
 -- Editor ownership and collaboration
@@ -1568,6 +1617,11 @@ CREATE TABLE place_labels(
 	label TEXT NOT NULL COLLATE NOCASE,
 	language_id INTEGER DEFAULT NULL,
 	
+	CONSTRAINT fk_lang_place
+		FOREIGN KEY ( place_id ) 
+		REFERENCES places ( id )
+		ON DELETE CASCADE,
+	
 	CONSTRAINT fk_place_lang
 		FOREIGN KEY ( language_id ) 
 		REFERENCES languages ( id )
@@ -1581,6 +1635,20 @@ CREATE INDEX idx_place_label_lang ON place_labels ( language_id )
 -- Location label searching
 CREATE VIRTUAL TABLE place_search 
 	USING fts4( content, tokenize=unicode61 );-- --
+
+
+CREATE VIEW place_view AS SELECT
+	places.id AS id,
+	GROUP_CONCAT( pm.meters ) AS meters, 
+	GROUP_CONCAT( pm.geo_lat ) AS geo_lat, 
+	GROUP_CONCAT( pm.geo_lon ) AS geo_lon, 
+	pl.label AS label,
+	pl.language_id AS language_id
+	
+	FROM places
+	LEFT JOIN place_map pm ON places.id = pm.place_id 
+	LEFT JOIN place_labels pl ON places.id = pl.place_id;-- --
+	
 
 -- Entry locations
 CREATE TABLE entry_places(
@@ -1733,21 +1801,6 @@ CREATE VIEW collection_view AS SELECT
 	LEFT JOIN categories ON collections.id = categories.collection_id
 	LEFT JOIN category_meta ON categories.id = category_meta.category_id
 	LEFT JOIN accept ON collections.id = accept.collection_id;-- --
-
-
--- Content edit view
--- Usage:
--- SELECT * FROM entry_view WHERE entry_content.entry_id = :id
-CREATE VIEW entry_content_view AS SELECT
-	entry_content.id AS id,
-	entries.id AS entry_id, 
-	entries.title AS entry_title, 
-	entry_content.content AS content
-		
-	FROM entry_content
-	INNER JOIN entries ON entry_content.entry_id = entries.id
-	ORDER BY entry_content.created DESC;-- --
-	
 
 
 
