@@ -35,6 +35,16 @@ CREATE TABLE settings(
 );-- --
 CREATE UNIQUE INDEX idx_settings_label ON settings( label );-- --
 
+CREATE TABLE statuses(
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	label TEXT NOT NULL COLLATE NOCASE,
+	is_unique INTEGER NOT NULL DEFAULT 0,
+	weight INTEGER NOT NULL DEFAULT 0,
+	status INTEGER NOT NULL DEFAULT 0
+);-- --
+CREATE UNIQUE INDEX idx_status_label ON statuses ( label );-- --
+CREATE INDEX idx_status_unique ON statuses ( is_unique );-- --
+CREATE INDEX idx_status_weight ON statuses ( status, weight );-- --
 
 -- List of languages
 CREATE TABLE languages (
@@ -72,17 +82,23 @@ CREATE TABLE lang_meta(
 	-- Default interface language
 	is_default INTEGER NOT NULL DEFAULT 0,
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_lang_meta
 		FOREIGN KEY ( language_id ) 
 		REFERENCES languages ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_lang_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_lang_meta ON lang_meta ( language_id );-- --
 CREATE INDEX idx_lang_default ON lang_meta ( is_default );-- --
 CREATE INDEX idx_lang_sort ON lang_meta ( sort_order );-- --
-CREATE INDEX idx_lang_status ON lang_meta ( status );-- --
+CREATE INDEX idx_lang_status ON lang_meta ( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TRIGGER lang_insert AFTER INSERT ON languages FOR EACH ROW
 BEGIN
@@ -287,18 +303,24 @@ CREATE TABLE site_meta(
 	url TEXT NOT NULL COLLATE NOCASE,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_site_meta
 		FOREIGN KEY ( site_id ) 
 		REFERENCES sites ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_site_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_site_meta ON site_meta ( site_id );-- --
 CREATE UNIQUE INDEX idx_site_url ON site_meta ( url );-- --
 CREATE INDEX idx_site_created ON site_meta ( created );-- --
 CREATE INDEX idx_site_updated ON site_meta ( updated );-- --
-CREATE INDEX idx_site_status ON site_meta ( status );-- --
+CREATE INDEX idx_site_status ON site_meta ( status )
+	WHERE status IS NOT NULL;-- --
 
 -- Site and content path searching
 CREATE VIRTUAL TABLE path_search 
@@ -465,19 +487,25 @@ CREATE TABLE user_meta(
 	
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_user_meta
 		FOREIGN KEY ( user_id ) 
 		REFERENCES users ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_user_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_user_meta ON user_meta ( user_id );-- --
 CREATE UNIQUE INDEX idx_user_ref ON user_meta ( reference )
 	WHERE reference IS NOT NULL;-- --
 CREATE INDEX idx_user_created ON user_meta ( created );-- --
 CREATE INDEX idx_user_updated ON user_meta ( updated );-- --
-CREATE INDEX idx_user_status ON user_meta ( status );-- --
+CREATE INDEX idx_user_status ON user_meta ( status )
+	WHERE status IS NOT NULL;-- --
 
 -- User search
 CREATE VIRTUAL TABLE user_search 
@@ -548,17 +576,23 @@ CREATE TABLE role_meta(
 	role_id INTEGER NOT NULL,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_role_meta
 		FOREIGN KEY ( role_id ) 
 		REFERENCES roles ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_role_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_role_meta ON role_meta( role_id );-- --
 CREATE INDEX idx_role_created ON role_meta( created );-- --
 CREATE INDEX idx_role_updated ON role_meta( updated );-- --
-CREATE INDEX idx_role_status ON role_meta( status );-- --
+CREATE INDEX idx_role_status ON role_meta( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TABLE role_desc(
 	role_id INTEGER NOT NULL,
@@ -671,18 +705,24 @@ CREATE TABLE id_provider_meta(
 	sort_order INTEGER NOT NULL DEFAULT 0,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_id_provider_meta
 		FOREIGN KEY ( provider_id ) 
 		REFERENCES id_providers( id ) 
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_provider_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_provider ON id_provider_meta ( provider_id );-- --
 CREATE INDEX idx_provider_sort ON id_provider_meta( sort_order );-- --
 CREATE INDEX idx_provider_created ON id_provider_meta( created );-- --
 CREATE INDEX idx_provider_updated ON id_provider_meta( updated );-- --
-CREATE INDEX idx_provider_status ON id_provider_meta( status );-- --
+CREATE INDEX idx_provider_status ON id_provider_meta( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TRIGGER id_provider_insert AFTER INSERT ON id_providers FOR EACH ROW
 BEGIN
@@ -1017,18 +1057,24 @@ CREATE TABLE workspace_meta(
 	urn TEXT NOT NULL COLLATE NOCASE,
 	created DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_workspace_meta
 		FOREIGN KEY ( workspace_id ) 
 		REFERENCES workspaces ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_workspace_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_workspace_meta ON workspace_meta ( workspace_id );-- --
 CREATE UNIQUE INDEX idx_workspaces_urn ON workspace_meta ( urn );-- --
 CREATE INDEX idx_workspace_created ON workspace_meta( created );-- --
 CREATE INDEX idx_workspace_updated ON workspace_meta( updated );-- --
-CREATE INDEX idx_workspace_status ON workspace_meta( status );-- --
+CREATE INDEX idx_workspace_status ON workspace_meta( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TABLE workspace_desc (
 	workspace_id INTEGER NOT NULL,
@@ -1111,18 +1157,24 @@ CREATE TABLE collection_meta (
 	
 	created DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_collection_meta
 		FOREIGN KEY ( collection_id ) 
 		REFERENCES collections ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_collection_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_collection_meta ON collection_meta ( collection_id );-- --
 CREATE UNIQUE INDEX idx_collection_urn ON collection_meta ( urn );-- --
 CREATE INDEX idx_collection_created ON collection_meta( created );-- --
 CREATE INDEX idx_collection_updated ON collection_meta( updated );-- --
-CREATE INDEX idx_collection_status ON collection_meta( status );-- --
+CREATE INDEX idx_collection_status ON collection_meta( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TABLE collection_desc (
 	collection_id INTEGER NOT NULL,
@@ -1200,12 +1252,17 @@ CREATE TABLE category_meta(
 	created DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
 	sort_order INTEGER DEFAULT 0,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_category_meta
 		FOREIGN KEY ( category_id ) 
 		REFERENCES categories( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_category_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_category_meta ON category_meta ( category_id );-- --
 CREATE UNIQUE INDEX idx_category_urn ON category_meta ( urn );-- --
@@ -1333,12 +1390,17 @@ CREATE TABLE entry_meta(
 	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
 	published DATETIME DEFAULT NULL,
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	status INTEGER NOT NULL DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_entry_meta 
 		FOREIGN KEY ( entry_id )
 		REFERENCES entries ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_entry_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_entry_meta ON entry_meta ( entry_id );-- --
 CREATE UNIQUE INDEX idx_entry_urn ON entry_meta ( urn );-- --
@@ -1347,7 +1409,8 @@ CREATE INDEX idx_entry_updated ON entry_meta ( updated );-- --
 CREATE INDEX idx_entry_pub ON entry_meta ( published ASC )
 	WHERE published IS NOT NULL;-- --
 CREATE INDEX idx_entry_sort ON entry_meta ( sort_order ASC );-- --
-CREATE INDEX idx_entry_status ON entry_meta ( status );-- --
+CREATE INDEX idx_entry_status ON entry_meta ( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TABLE entry_desc (
 	entry_id INTEGER NOT NULL,
@@ -1533,15 +1596,21 @@ CREATE TABLE persons (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 	urn TEXT DEFAULT NULL COLLATE NOCASE,
 	user_id INTEGER NOT NULL,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_person_user
 		FOREIGN KEY ( user_id )
 		REFERENCES users ( id ) 
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_person_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE INDEX idx_persons_user ON persons ( user_id );-- --
-CREATE INDEX idx_persons_status ON persons ( status );-- --
+CREATE INDEX idx_persons_status ON persons ( status )
+	WHERE status IS NOT NULL;-- --
 
 -- Region/locale specific profile content
 CREATE TABLE person_desc (
@@ -1813,17 +1882,23 @@ CREATE TABLE template_meta(
 	template_id INTEGER NOT NULL,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT 0,
+	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_template_meta
 		FOREIGN KEY ( template_id ) 
 		REFERENCES templates ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_template_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_template_meta ON template_meta ( template_id );-- --
 CREATE INDEX idx_template_created ON template_meta ( created );-- --
 CREATE INDEX idx_template_updated ON template_meta ( updated );-- --
-CREATE INDEX idx_template_status ON template_meta ( status );-- --
+CREATE INDEX idx_template_status ON template_meta ( status )
+	WHERE status IS NOT NULL;-- --
 
 CREATE TABLE template_desc(
 	template_id INTEGER NOT NULL,
