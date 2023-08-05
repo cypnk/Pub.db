@@ -394,6 +394,12 @@ CREATE INDEX idx_session_site ON sessions( site_id );-- --
 CREATE INDEX idx_session_created ON sessions ( created ASC );-- --
 CREATE INDEX idx_session_expires ON sessions ( expires ASC );-- --
 
+CREATE TRIGGER session_update AFTER UPDATE ON sessions
+BEGIN
+	UPDATE sessions SET updated = CURRENT_TIMESTAMP 
+		WHERE id = NEW.id;
+END;-- --
+
 -- Site specific cached content
 CREATE TABLE caches (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
