@@ -60,7 +60,8 @@ CREATE TABLE languages (
 CREATE UNIQUE INDEX idx_lang_label ON languages ( label );-- --
 CREATE UNIQUE INDEX idx_lang_iso ON languages ( iso_code );-- --
 CREATE UNIQUE index idx_lang_eng ON languages( eng_name );-- --
-CREATE INDEX idx_lang_group ON languages ( lang_group );-- --
+CREATE INDEX idx_lang_group ON languages ( lang_group )
+	WHERE lang_group IS NOT NULL;-- --
 CREATE INDEX idx_lang_settings ON languages ( setting_id ) 
 	WHERE setting_id IS NOT NULL;-- --
 
@@ -95,6 +96,70 @@ BEGIN
 	UPDATE languages SET is_default = 0 
 		WHERE is_default IS NOT 0 AND id IS NOT NEW.id;
 END;-- --
+
+INSERT INTO languages (
+	iso_code, label, eng_name
+) VALUES 
+( 'ar', 'عربى', 'Arabic' ),
+( 'be', 'Беларуская мова', 'Belarusian' ),
+( 'bn', 'বাংলা', 'Bengali' ),
+( 'bo', 'ལྷ་སའི་སྐད་', 'Tibetan' ),
+( 'ca', 'Català', 'Catalan' ),
+( 'cs', 'Čeština', 'Czech' ),
+( 'da', 'Dansk', 'Danish' ),
+( 'de', 'Deutsch', 'German' ),
+( 'el', 'Ελληνικά', 'Greek' ),
+( 'en', 'English', 'English' ),
+( 'eo', 'Esperanto', 'Esperanto' ),
+( 'es', 'Español', 'Spanish' ), 
+( 'et', 'Eesti', 'Estonian' ),
+( 'fa', 'فارسی', 'Farsi' ),
+( 'fi', 'Suomi', 'Finnish' ),
+( 'fr', 'Français', 'French' ),
+( 'ga', 'Gaeilge', 'Gaelic' ),
+( 'gu', 'ગુજરાતી', 'Gujarati' ),
+( 'he', 'עברית‬', 'Hebrew' ),
+( 'hi', 'हिंदी', 'Hindi' ),
+( 'hr', 'Hrvatski', 'Croatian' ),
+( 'hu', 'Magyar', 'Hungarian' ),
+( 'hy', 'Հայերեն', 'Armenian' ),
+( 'ia', 'Interlingua', 'Interlingua' ),
+( 'it', 'Italiano', 'Italian' ),
+( 'jp', '日本語', 'Japanese' ),
+( 'ka', 'ქართული ენა', 'Georgian' ),
+( 'kn', 'ಕನ್ನಡ', 'Kannada' ),
+( 'ko', '조선말', 'Korean' ),
+( 'lt', 'Lietuvių kalba', 'Lithuanian' ),
+( 'lo', 'ພາສາລາວ', 'Lao' ),
+( 'lv', 'Latviešu valoda', 'Latvian' ),
+( 'ml', 'Melayu', 'Malay' ),
+( 'my', 'မြန်မာဘာသာ', 'Myanmar' ),
+( 'nl', 'Nederlands', 'Dutch' ),
+( 'no', 'Norsk', 'Norwegian' ),
+( 'pa', 'ਪੰਜਾਬੀ', 'Punjabi' ),
+( 'pt', 'Português', 'Portuguese' ),
+( 'pl', 'Język polski', 'Polish' ),
+( 'ro', 'Limba română', 'Romanian' ),
+( 'ru', 'русский', 'Russian' ),
+( 'sl', 'Slovenska', 'Slovenian' ),
+( 'sk', 'Slovenčina', 'Slovak' ),
+( 'si', 'සිංහල', 'Sinhalese' ),
+( 'sr', 'Srpski', 'Serbian' ),
+( 'sv', 'Svenska', 'Swedish' ),
+( 'ta', 'தமிழ்', 'Tamil' ),
+( 'te', 'తెలుగు', 'Telugu' ),
+( 'th', 'ภาษาไทย', 'Thai' ),
+( 'tk', 'türkmençe', 'Turkmen' ),
+( 'tr', 'Türkçe', 'Turkish' ),
+( 'uk', 'Українська', 'Ukranian' ),
+( 'ur', 'اُردُو‬', 'Urdu' ),
+( 'uz', 'oʻzbek tili', 'Uzbek' ),
+( 'vi', 'Tiếng Việt', 'Vietnamese' ),
+( 'zh', '中文', 'Chinese' );-- --
+
+
+
+
 
 
 -- Regional content interface replacement data
@@ -1713,6 +1778,105 @@ CREATE INDEX idx_coll_place_sort ON
 
 
 
+
+
+
+-- Content templates
+CREATE TABLE templates(
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+	parent_id INTEGER DEFAULT NULL REFERENCES templates( id ) 
+		ON DELETE CASCADE,
+	
+	-- External template
+	url TEXT DEFAULT NULL,
+	
+	-- HTML
+	create_template TEXT NOT NULL COLLATE NOCASE, 
+	edit_template TEXT NOT NULL COLLATE NOCASE, 
+	view_template TEXT NOT NULL COLLATE NOCASE,
+	
+	setting_id INTEGER DEFAULT NULL,
+	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	
+	CONSTRAINT fk_template_settings
+		FOREIGN KEY ( setting_id ) 
+		REFERENCES settings ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE INDEX idx_template_parent ON templates ( parent_id );-- --
+CREATE UNIQUE INDEX idx_template_url ON templates ( url )
+	WHERE url IS NOT NULL;-- --
+CREATE INDEX idx_template_settings ON templates ( setting_id )
+	WHERE setting_id IS NOT NULL;-- --
+
+CREATE TABLE template_meta(
+	template_id INTEGER NOT NULL,
+	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER DEFAULT 0,
+	
+	CONSTRAINT fk_template_meta
+		FOREIGN KEY ( template_id ) 
+		REFERENCES templates ( id )
+		ON DELETE CASCADE
+);-- --
+CREATE UNIQUE INDEX idx_template_meta ON template_meta ( template_id );-- --
+CREATE INDEX idx_template_created ON template_meta ( created );-- --
+CREATE INDEX idx_template_updated ON template_meta ( updated );-- --
+CREATE INDEX idx_template_status ON template_meta ( status );-- --
+
+CREATE TABLE template_desc(
+	template_id INTEGER NOT NULL,
+	title TEXT NOT NULL COLLATE NOCASE,
+	description TEXT DEFAULT NULL COLLATE NOCASE,
+	language_id INTEGER DEFAULT NULL,
+	
+	CONSTRAINT fk_template_meta
+		FOREIGN KEY ( template_id ) 
+		REFERENCES templates ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_template_lang
+		FOREIGN KEY ( language_id ) 
+		REFERENCES languages ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE INDEX idx_template_desc ON template_desc ( template_id );-- --
+CREATE INDEX idx_template_title ON template_desc ( title );-- --
+CREATE INDEX idx_template_lang ON template_desc ( language_id );-- --
+
+CREATE TRIGGER template_after_update AFTER UPDATE ON templates FOR EACH ROW 
+BEGIN
+	UPDATE template_meta SET updated = CURRENT_TIMESTAMP 
+		WHERE template_id = NEW.id;
+END;-- --
+
+-- Input handlers
+CREATE TABLE template_handlers(
+	template_id INTEGER NOT NULL,
+	handler_id INTEGER NOT NULL,
+	sort_order INTEGER DEFAULT 0,
+	
+	CONSTRAINT fk_handler_template
+		FOREIGN KEY ( template_id ) 
+		REFERENCES templates ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_template_handler
+		FOREIGN KEY ( handler_id ) 
+		REFERENCES handlers ( id )
+		ON DELETE CASCADE
+);-- --
+CREATE INDEX idx_template_handler ON template_handlers ( template_id, handler_id );-- --
+CREATE INDEX idx_template_hsort ON template_handlers ( sort_order );-- --
+
+-- Author views
+CREATE TABLE author_templates(
+	author_id INTEGER NOT NULL REFERENCES authors ( id )
+		ON DELETE CASCADE,
+	template_id INTEGER NOT NULL REFERENCES templates ( id )
+		ON DELETE CASCADE
+);-- --
 
 
 
