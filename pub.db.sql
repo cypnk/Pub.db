@@ -190,14 +190,24 @@ CREATE TABLE translations (
 	-- Default locale for the language
 	is_default INTEGER NOT NULL DEFAULT 0,
 	
+	setting_id INTEGER DEFAULT NULL,
+	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	
 	CONSTRAINT fk_translation_language
 		FOREIGN KEY ( language_id ) 
 		REFERENCES languages ( id )
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_translation_settings
+		FOREIGN KEY ( setting_id ) 
+		REFERENCES settings ( id )
+		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_translation_local ON translations( locale );-- --
 CREATE INDEX idx_translation_lang ON translations( language_id );-- --
 CREATE INDEX idx_translation_default ON translations( is_default );-- --
+CREATE INDEX idx_translation_setting ON translations( setting_id )
+	WHERE setting_id IS NOT NULL;-- --
 
 -- Unset any previous default language locales if new default is set
 CREATE TRIGGER locale_default_insert BEFORE INSERT ON 
@@ -226,10 +236,13 @@ CREATE VIEW locale_view AS SELECT
 	l.lang_group AS lang_group,
 	t.locale AS locale,
 	t.is_default AS is_locale_default,
-	t.definitions AS definitions
+	t.definitions AS definitions,
+	s.info AS settings,
+	t.settings_override AS settings_override
 	
 	FROM translations t
-	JOIN languages l ON t.language_id = l.id;-- --
+	JOIN languages l ON t.language_id = l.id
+	LEFT JOIN settings s ON t.setting_id = s.id;-- --
 
 -- Localized date presentation formats
 CREATE TABLE date_formats(
