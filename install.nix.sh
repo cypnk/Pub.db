@@ -22,7 +22,7 @@ mkdir -p $FD
 touch $LOG
 
 # Backup to data folder, if pub.db already exists
-if [ -f $FD/$DB ]; then
+if [ -f $DB ]; then
 	sqlite3 $DB .dump > $DB.$DATE.sql
  	$MSG="- Backed up $DB $DATE"
 	echo $MSG >> $LOG
