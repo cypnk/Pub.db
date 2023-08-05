@@ -381,7 +381,7 @@ CREATE VIEW sites_enabled AS SELECT
 	
 	FROM sites s 
 	INNER JOIN site_meta sm ON s.id = sm.site_id 
-	LEFT JOIN settings sg ON s.settings_id = sg.id 
+	LEFT JOIN settings sg ON s.setting_id = sg.id 
 	LEFT JOIN site_aliases a ON s.id = a.site_id;-- --
 
 
@@ -658,7 +658,7 @@ CREATE UNIQUE INDEX idx_user_roles ON user_roles ( role_id, user_id );-- --
 CREATE TABLE role_permissions(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 	role_id INTEGER NOT NULL,
-	settings_id INTEGER DEFAULT NULL,
+	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_permission_role 
@@ -667,13 +667,13 @@ CREATE TABLE role_permissions(
 		ON DELETE CASCADE, 
 	
 	CONSTRAINT fk_role_settings
-		FOREIGN KEY ( settings_id ) 
+		FOREIGN KEY ( setting_id ) 
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
 );-- --
 CREATE INDEX idx_permission_role ON role_permissions( role_id );-- --
-CREATE INDEX idx_permission_settings ON role_permissions ( settings_id )
-	WHERE settings_id IS NOT NULL;-- --
+CREATE INDEX idx_permission_settings ON role_permissions ( setting_id )
+	WHERE setting_id IS NOT NULL;-- --
 
 -- Role based user permission view
 CREATE VIEW user_permission_view AS 
@@ -694,9 +694,9 @@ SELECT
 	
 	FROM user_roles
 	JOIN roles ON user_roles.role_id = roles.id
-	LEFT JOIN settings pg ON roles.settings_id = rg.id
+	LEFT JOIN settings pg ON roles.setting_id = rg.id
 	LEFT JOIN role_permissions rp ON roles.id = rp.role_id
-	LEFT JOIN settings sp ON rp.settings_id = sp.id;-- --
+	LEFT JOIN settings sp ON rp.setting_id = sp.id;-- --
 
 
 
@@ -1523,8 +1523,8 @@ CREATE VIEW entry_view AS SELECT
 	INNER JOIN entry_meta em ON e.id = em.entry_id 
 	INNER JOIN entry_types t ON e.type_id = t.id 
 	LEFT JOIN entry_desc ed ON e.id = ed.entry_id 
-	LEFT JOIN settings et ON t.settings_id = et.id 
-	LEFT JOIN settings es ON e.settings_id = es.id;-- --
+	LEFT JOIN settings et ON t.setting_id = et.id 
+	LEFT JOIN settings es ON e.setting_id = es.id;-- --
 
 
 -- Content edit view
@@ -1740,8 +1740,17 @@ END;-- --
 
 -- Content locations
 CREATE TABLE places(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	setting_id INTEGER DEFAULT NULL,
+	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	
+	CONSTRAINT fk_place_settings
+		FOREIGN KEY ( setting_id ) 
+		REFERENCES settings ( id )
+		ON DELETE SET NULL
 );-- --
+CREATE INDEX idx_place_settings ON places ( setting_id ) 
+	WHERE setting_id IS NOT NULL;-- --
 
 -- Location plot
 CREATE TABLE place_map(
@@ -1763,6 +1772,24 @@ CREATE TABLE place_map(
 CREATE INDEX idx_place_map ON place_map( place_id );-- --
 CREATE UNIQUE INDEX idx_place_map_geo ON 
 	place_map( geo_lat, geo_lon, meters );-- --
+
+-- Place metadata
+CREATE TABLE place_meta(
+	place_id INTEGER NOT NULL,
+	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER DEFAULT NULL,
+	
+	CONSTRAINT fk_place_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE UNIQUE INDEX idx_place_meta ON place_meta ( place_id );-- --
+CREATE INDEX idx_place_created ON place_meta ( created );-- --
+CREATE INDEX idx_place_updated ON place_meta ( updated );-- --
+CREATE INDEX idx_place_status ON place_meta ( status ) 
+	WHERE status IS NOT NULL;-- --
 
 -- Region/locale specific place names
 CREATE TABLE place_labels(
@@ -1789,18 +1816,54 @@ CREATE INDEX idx_place_label_lang ON place_labels ( language_id )
 CREATE VIRTUAL TABLE place_search 
 	USING fts4( content, tokenize=unicode61 );-- --
 
+CREATE TRIGGER place_insert AFTER INSERT ON places FOR EACH ROW
+BEGIN
+	INSERT INTO place_meta( places_id ) VALUES ( NEW.id );
+END;-- --
+
+CREATE TRIGGER place_update AFTER UPDATE ON places FOR EACH ROW
+BEGIN
+	UPDATE place_meta SET updated = CURRENT_TIMESTAMP 
+		WHERE place_id = NEW.id;
+END;-- --
+
+CREATE TRIGGER place_map_insert AFTER INSERT ON place_map FOR EACH ROW
+BEGIN
+	UPDATE place_meta SET updated = CURRENT_TIMESTAMP 
+		WHERE place_id = NEW.place_id;
+END;-- --
+
+CREATE TRIGGER place_map_update AFTER UPDATE ON place_map FOR EACH ROW
+BEGIN
+	UPDATE place_meta SET updated = CURRENT_TIMESTAMP 
+		WHERE place_id = NEW.place_id;
+END;-- --
+
+CREATE TRIGGER place_map_delete BEFORE DELETE ON place_map FOR EACH ROW
+BEGIN
+	UPDATE place_meta SET updated = CURRENT_TIMESTAMP 
+		WHERE place_id = OLD.place_id;
+END;-- --
+
 
 CREATE VIEW place_view AS SELECT
 	places.id AS id,
+	ps.info AS settings,
+	places.settings_override AS settings_override,
 	GROUP_CONCAT( pm.meters ) AS meters, 
 	GROUP_CONCAT( pm.geo_lat ) AS geo_lat, 
 	GROUP_CONCAT( pm.geo_lon ) AS geo_lon, 
 	pl.label AS label,
-	pl.language_id AS language_id
+	pl.language_id AS language_id,
+	pe.created AS created,
+	pe.created AS updated,
+	pe.status AS status
 	
 	FROM places
+	JOIN place_meta pe ON places.id = pe.place_id
 	LEFT JOIN place_map pm ON places.id = pm.place_id 
-	LEFT JOIN place_labels pl ON places.id = pl.place_id;-- --
+	LEFT JOIN place_labels pl ON places.id = pl.place_id, 
+	LEFT JOIN settings ps ON places.setting_id = ps.id;-- --
 	
 
 -- Entry locations
@@ -2009,7 +2072,7 @@ CREATE VIEW service_view AS SELECT
 	FROM sites
 	INNER JOIN site_workspaces ON 
 		sites.id = site_workspaces.site_id
-	LEFT JOIN settings ON sites.settings_id = settings.id
+	LEFT JOIN settings ON sites.setting_id = settings.id
 	LEFT JOIN workspaces ON 
 		site_workspaces.workspace_id = workspaces.id
 	LEFT JOIN collections ON 
@@ -2054,7 +2117,7 @@ CREATE VIEW collection_view AS SELECT
 	INNER JOIN site_workspaces ON 
 		collections.workspace_id = site_workspaces.workspace_id
 	INNER JOIN sites ON site_workspaces.site_id = sites.id
-	LEFT JOIN settings s ON sites.settings_id = s.id
+	LEFT JOIN settings s ON sites.setting_id = s.id
 	LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id
 	LEFT JOIN categories ON collections.id = categories.collection_id
 	LEFT JOIN category_meta ON categories.id = category_meta.category_id
