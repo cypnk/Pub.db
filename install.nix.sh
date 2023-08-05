@@ -24,12 +24,12 @@ touch $LOG
 # Backup to data folder, if pub.db already exists
 if [ -f $DB ]; then
 	sqlite3 $DB .dump > $DB.$DATE.sql
- 	$MSG="- Backed up $DB $DATE"
+ 	MSG="- Backed up $DB $DATE"
 	echo $MSG >> $LOG
  	echo $MSG
 else
 	sqlite3 $DB < $SQL
- 	$MSG="- Created $DB"
+ 	MSG="- Created $DB $DATE"
  	echo $MSG >> $LOG
 	echo $MSG
 fi
