@@ -1066,7 +1066,7 @@ END;-- --
 -- Login view
 -- Usage:
 -- SELECT * FROM login_view WHERE lookup = :lookup;
--- SELECT * FROM login_view WHERE name = :username;
+-- SELECT * FROM login_view WHERE username = :username;
 CREATE VIEW login_view AS SELECT 
 	logins.id AS id,
 	logins.user_id AS user_id, 
@@ -1074,8 +1074,15 @@ CREATE VIEW login_view AS SELECT
 	logins.lookup AS lookup, 
 	logins.hash AS hash, 
 	logins.updated AS updated, 
-	users.status AS status, 
-	users.username AS name, 
+	um.reference AS reference,
+	
+	um.status AS status, 
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value,
+	
+	users.username AS username, 
 	users.password AS password, 
 	us.info AS user_settings,
 	users.settings_override AS user_settings_override, 
@@ -1089,34 +1096,42 @@ CREATE VIEW login_view AS SELECT
 	
 	FROM logins
 	JOIN users ON logins.user_id = users.id
+	JOIN user_meta um ON logins.user_id = um.user_id
 	LEFT JOIN user_auth ua ON users.id = ua.user_id
 	LEFT JOIN settings us ON users.setting_id = us.id
 	LEFT JOIN settings ts ON ua.setting_id = ts.id
-	LEFT JOIN settings ls ON logins.setting_id = ls.id;-- --
+	LEFT JOIN settings ls ON logins.setting_id = ls.id
+	LEFT JOIN statuses u ON um.status = u.id;-- --
 
 -- Post-login user data
 CREATE VIEW user_view AS SELECT 
 	users.id AS id, 
 	users.uuid AS uuid, 
-	users.status AS status, 
 	users.username AS username, 
 	users.password AS password, 
 	users.hash AS hash,
 	ua.is_approved AS is_approved, 
 	ua.is_locked AS is_locked, 
 	ua.expires AS expires, 
-	us.created AS created, 
-	us.updated AS updated, 
+	um.created AS created, 
+	um.updated AS updated, 
+	um.status AS status, 
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value,
+	um.reference AS reference,
 	us.info AS settings, 
 	users.settings_override AS settings_override, 
 	ts.info AS auth_settings,
 	ua.settings_override AS auth_settings_override
 	
 	FROM users
+	JOIN user_meta um ON users.id = um.user_id
 	LEFT JOIN user_auth ua ON users.id = ua.user_id
-	LEFT JOIN user_stats us ON users.id = us.user_id
 	LEFT JOIN settings ts ON ua.setting_id = ts.id
-	LEFT JOIN settings us ON users.setting_id = us.id;-- --
+	LEFT JOIN settings us ON users.setting_id = us.id
+	LEFT JOIN statuses u ON um.status = u.id;-- --
 	
 
 
@@ -1160,7 +1175,6 @@ CREATE TABLE handlers(
 	
 	-- Handler function/class
 	controller TEXT NOT NULL COLLATE NOCASE,
-	sort_order INTEGER NOT NULL DEFAULT 0,
 	
 	-- Content create/update/delete settings
 	setting_id INTEGER DEFAULT NULL,
@@ -1179,11 +1193,48 @@ CREATE TABLE handlers(
 CREATE UNIQUE INDEX idx_handler_pattern ON 
 	handlers( site_id, verb, pattern );-- --
 CREATE INDEX idx_handler_verb ON handlers( verb );-- --
-CREATE INDEX idx_handler_order ON handlers( sort_order );-- --
 CREATE INDEX idx_handler_settings ON handlers( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
+CREATE TABLE handler_meta(
+	handler_id INTEGER NOT NULL,
+	status INTEGER DEFAULT NULL,
+	
+	CONSTRAINT fk_handler_meta
+		FOREIGN KEY ( handler_id )
+		REFERENCES handlers( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_handler_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE INDEX idx_handler_meta ON handler_meta( handler_id );-- --
+CREATE INDEX idx_handler_status ON handler_meta( status )
+	WHERE status IS NOT NULL;-- --
 
+CREATE TRIGGER handler_insert AFTER INSERT ON handlers FOR EACH ROW
+BEGIN
+	INSERT INTO handler_meta( handler_id ) VALUES ( NEW.id );
+END;-- --
+
+-- Handler scope
+CREATE VIEW handler_view AS SELECT 
+	h.id AS id, 
+	h.site_id AS site_id, 
+	s.info AS settings, 
+	h.settings_override AS settings_override,
+	h.status AS status,
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value
+	
+	FROM handlers h
+	JOIN handler_meta hm ON h.id = hm.handler_id
+	LEFT JOIN settings s ON h.setting_id = se.id
+	LEFT JOIN statuses u ON h.status = u.id;-- --
 
 
 
@@ -1645,7 +1696,12 @@ CREATE VIEW entry_view AS SELECT
 	em.updated AS updated, 
 	em.published AS published, 
 	em.sort_order AS sort_order, 
+	
 	em.status AS status, 
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value,
 	
 	ed.title AS title, 
 	ed.slug AS slug, 
@@ -1664,7 +1720,8 @@ CREATE VIEW entry_view AS SELECT
 	INNER JOIN entry_types t ON e.type_id = t.id 
 	LEFT JOIN entry_desc ed ON e.id = ed.entry_id 
 	LEFT JOIN settings et ON t.setting_id = et.id 
-	LEFT JOIN settings es ON e.setting_id = es.id;-- --
+	LEFT JOIN settings es ON e.setting_id = es.id
+	LEFT JOIN statuses u ON em.status = u.id;-- --
 
 
 -- Content edit view
@@ -1811,7 +1868,11 @@ CREATE VIEW person_view AS SELECT
 	p.id AS id,
 	p.urn AS urn,
 	p.user_id AS user_id,
-	p.status AS person_status,
+	p.status AS status,
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value,
 	d.title AS title,
 	d.name AS name,
 	d.uri AS uri,
@@ -1820,7 +1881,8 @@ CREATE VIEW person_view AS SELECT
 	d.language_id AS language_id
 
 	FROM persons p
-	LEFT JOIN person_desc d ON p.id = d.person_id;-- --
+	LEFT JOIN person_desc d ON p.id = d.person_id
+	LEFT JOIN statuses u ON p.status = u.id;-- --
 
 
 -- Editor ownership and collaboration
@@ -1997,13 +2059,18 @@ CREATE VIEW place_view AS SELECT
 	pl.language_id AS language_id,
 	pe.created AS created,
 	pe.created AS updated,
-	pe.status AS status
+	pe.status AS status,
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value
 	
 	FROM places
 	JOIN place_meta pe ON places.id = pe.place_id
 	LEFT JOIN place_map pm ON places.id = pm.place_id 
 	LEFT JOIN place_labels pl ON places.id = pl.place_id, 
-	LEFT JOIN settings ps ON places.setting_id = ps.id;-- --
+	LEFT JOIN settings ps ON places.setting_id = ps.id
+	LEFT JOIN statuses u ON pe.status = u.id;-- --
 	
 
 -- Entry locations
