@@ -88,7 +88,7 @@ CREATE TABLE app_logs(
 	-- File or class name
 	origin TEXT NOT NULL COLLATE NOCASE,
 	
-	CONSTRAINT fk_app_event
+	CONSTRAINT fk_app_log
 		FOREIGN KEY ( log_id ) 
 		REFERENCES event_logs ( id )
 		ON DELETE CASCADE
@@ -2322,7 +2322,7 @@ CREATE TABLE template_events (
 	
 	CONSTRAINT fk_template_event
 		FOREIGN KEY ( event_id ) 
-		REFERENCES event ( id )
+		REFERENCES events ( id )
 		ON DELETE CASCADE
 );-- --
 CREATE INDEX idx_template_event ON template_handlers ( template_id, event_id );-- --
