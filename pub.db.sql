@@ -77,7 +77,7 @@ CREATE INDEX idx_log_expires ON event_logs ( expires )
 
 -- Internal application logs
 CREATE TABLE app_logs(
-	event_id INTEGER NOT NULL,
+	log_id INTEGER NOT NULL,
 	
 	-- Error/notice/warning code
 	code INTEGER NOT NULL,
@@ -89,11 +89,11 @@ CREATE TABLE app_logs(
 	origin TEXT NOT NULL COLLATE NOCASE,
 	
 	CONSTRAINT fk_app_event
-		FOREIGN KEY ( event_id ) 
+		FOREIGN KEY ( log_id ) 
 		REFERENCES event_logs ( id )
 		ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX idx_app_event ON app_logs ( event_id );-- --
+CREATE UNIQUE INDEX idx_app_event ON app_logs ( log_id );-- --
 CREATE INDEX idx_log_code ON app_logs ( code );-- --
 CREATE INDEX idx_log_line ON app_logs ( line );-- --
 CREATE INDEX idx_log_origin ON app_logs ( origin )
@@ -101,7 +101,7 @@ CREATE INDEX idx_log_origin ON app_logs ( origin )
 
 -- Client HTTP request data
 CREATE TABLE web_logs(
-	event_id INTEGER NOT NULL,
+	log_id INTEGER NOT NULL,
 	
 	-- Domain/host
 	realm TEXT NOT NULL COLLATE NOCASE,
@@ -127,12 +127,12 @@ CREATE TABLE web_logs(
 	-- HTTP response code
 	response INTEGER NOT NULL,
 	
-	CONSTRAINT fk_web_event
-		FOREIGN KEY ( event_id ) 
+	CONSTRAINT fk_web_log
+		FOREIGN KEY ( log_id ) 
 		REFERENCES event_logs ( id )
 		ON DELETE CASCADE
 );-- --
-CREATE UNIQUE INDEX idx_web_event ON web_logs ( event_id );-- --
+CREATE UNIQUE INDEX idx_web_event ON web_logs ( log_id );-- --
 CREATE INDEX idx_log_realm ON web_logs ( realm );-- --
 CREATE INDEX idx_log_ip ON web_logs ( ip );-- --
 CREATE INDEX idx_log_method ON web_logs ( method );-- --
@@ -149,7 +149,7 @@ CREATE TRIGGER app_error_insert AFTER INSERT ON event_logs FOR EACH ROW
 WHEN NEW.label = 'error' OR NEW.label = 'notice' OR NEW.label = 'warning'
 BEGIN
 	INSERT INTO app_logs(
-		event_id, code, line, origin
+		log_id, code, line, origin
 	) VALUES (
 		NEW.id,
 		CAST( COALESCE( json_extract( NEW.content, '$.code' ), 0 ) AS INTEGER ),
@@ -162,7 +162,7 @@ CREATE TRIGGER web_request_insert AFTER INSERT ON event_logs FOR EACH ROW
 WHEN NEW.label = 'request'
 BEGIN
 	INSERT INTO web_logs( 
-		event_id, realm, ip, method, uri, user_agent, 
+		log_id, realm, ip, method, uri, user_agent, 
 		query_string, language, response
 	) VALUES (
 		NEW.id,
@@ -1165,13 +1165,6 @@ CREATE UNIQUE INDEX idx_route_marker_pattern ON route_markers( pattern );-- --
 -- Application handlers
 CREATE TABLE handlers(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	site_id INTEGER NOT NULL,
-	
-	-- GET, POST, HEAD etc..
-	verb TEXT NOT NULL COLLATE NOCASE,
-	
-	-- URL pattern
-	pattern TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Handler function/class
 	controller TEXT NOT NULL COLLATE NOCASE,
@@ -1180,19 +1173,11 @@ CREATE TABLE handlers(
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
-	CONSTRAINT fk_handler_site
-		FOREIGN KEY ( site_id ) 
-		REFERENCES site ( id )
-		ON DELETE CASCADE,
-	
 	CONSTRAINT fk_handler_settings
 		FOREIGN KEY ( setting_id ) 
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_handler_pattern ON 
-	handlers( site_id, verb, pattern );-- --
-CREATE INDEX idx_handler_verb ON handlers( verb );-- --
 CREATE INDEX idx_handler_settings ON handlers( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
@@ -1222,7 +1207,7 @@ END;-- --
 -- Handler scope
 CREATE VIEW handler_view AS SELECT 
 	h.id AS id, 
-	h.site_id AS site_id, 
+	h.controller AS controller,
 	s.info AS settings, 
 	h.settings_override AS settings_override,
 	h.status AS status,
@@ -1235,6 +1220,115 @@ CREATE VIEW handler_view AS SELECT
 	JOIN handler_meta hm ON h.id = hm.handler_id
 	LEFT JOIN settings s ON h.setting_id = se.id
 	LEFT JOIN statuses u ON h.status = u.id;-- --
+
+-- Actions
+CREATE TABLE events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	name TEXT NOT NULL COLLATE NOCASE,
+	status INTEGER DEFAULT NULL,
+	
+	-- Execution parameters
+	params TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	
+	CONSTRAINT fk_event_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE UNIQUE INDEX idx_event_name ON events ( name );-- --
+CREATE INDEX idx_event_site ON events ( site_id );-- --
+CREATE INDEX idx_event_status ON events ( status )
+	WHERE status IS NOT NULL;-- --
+
+-- Standard event name formatting
+CREATE TRIGGER event_insert_format AFTER INSERT ON events FOR EACH ROW
+BEGIN
+	UPDATE events SET name = REPLACE( LOWER( TRIM( NEW.name ) ), ' ', '_' )
+		WHERE id = NEW.id;
+END;-- --
+
+CREATE TRIGGER event_update_format AFTER UPDATE ON events FOR EACH ROW
+BEGIN
+	UPDATE events SET name = REPLACE( LOWER( TRIM( NEW.name ) ), ' ', '_' )
+		WHERE id = NEW.id;
+END;-- --
+
+CREATE TABLE event_handlers(
+	event_id INTEGER DEFAULT NULL,
+	handler_id INTEGER NOT NULL,
+	priority INTEGER NOT NULL DEFAULT 0,
+	
+	CONSTRAINT fk_handler_event 
+		FOREIGN KEY ( event_id ) 
+		REFERENCES events ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_event_handler
+		FOREIGN KEY ( handler_id ) 
+		REFERENCES handlers ( id )
+		ON DELETE CASCADE
+);-- --
+CREATE UNIQUE INDEX idx_event_handler 
+	ON event_handlers ( event_id, handler_id )
+	WHERE event_id IS NOT NULL;-- --
+CREATE INDEX idx_event_handler_priority ON event_handlers( priority );-- --
+
+CREATE VIEW event_view AS SELECT 
+	id, name, params, status, 
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value
+	
+	FROM events
+	LEFT JOIN statuses u ON status = u.id;-- --
+
+CREATE VIEW event_handler_view AS SELECT
+	id, name, params, status, 
+	u.label AS status_label,
+	u.is_unique AS status_is_unique,
+	u.weight AS status_weight,
+	u.status AS status_value 
+	eh.priority AS priority,
+	eh.handler_id AS handler_id,
+	h.controller AS handler_controller,
+	h.settings AS handler_settings, 
+	h.settings_override AS handler_settings_override,
+	h.status AS handler_status,
+	h.status_label AS handler_status_label,
+	h.status_is_unique AS handler_status_is_unique,
+	h.status_weight AS handler_status_weight,
+	h.status_value AS handler_status_value
+	
+	FROM events
+	LEFT JOIN event_handlers eh ON events.id = eh.event_id 
+	LEFT JOIN handler_view h ON eh.handler_id = h.id
+	LEFT JOIN statuses u ON status = u.id;-- --
+
+CREATE TABLE request_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+	site_id INTEGER NOT NULL,
+	event_id INTEGER NOT NULL,
+	
+	-- GET, POST, HEAD etc..
+	verb TEXT NOT NULL COLLATE NOCASE,
+	
+	-- URL pattern
+	pattern TEXT NOT NULL COLLATE NOCASE,
+	
+	CONSTRAINT fk_event_site
+		FOREIGN KEY ( site_id ) 
+		REFERENCES site ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_request_event
+		FOREIGN KEY ( event_id ) 
+		REFERENCES events ( id )
+		ON DELETE CASCADE
+);-- --
+CREATE UNIQUE INDEX idx_evemt_pattern ON 
+	request_events ( site_id, event_id, verb, pattern );-- --
+CREATE INDEX idx_event_verb ON request_events ( verb );-- --
 
 
 
@@ -2215,23 +2309,23 @@ BEGIN
 		WHERE template_id = NEW.id;
 END;-- --
 
--- Input handlers
-CREATE TABLE template_handlers(
+-- Input/Output triggers
+CREATE TABLE template_events (
 	template_id INTEGER NOT NULL,
-	handler_id INTEGER NOT NULL,
+	event_id INTEGER NOT NULL,
 	sort_order INTEGER DEFAULT 0,
 	
-	CONSTRAINT fk_handler_template
+	CONSTRAINT fk_event_template
 		FOREIGN KEY ( template_id ) 
 		REFERENCES templates ( id )
 		ON DELETE CASCADE,
 	
-	CONSTRAINT fk_template_handler
-		FOREIGN KEY ( handler_id ) 
-		REFERENCES handlers ( id )
+	CONSTRAINT fk_template_event
+		FOREIGN KEY ( event_id ) 
+		REFERENCES event ( id )
 		ON DELETE CASCADE
 );-- --
-CREATE INDEX idx_template_handler ON template_handlers ( template_id, handler_id );-- --
+CREATE INDEX idx_template_event ON template_handlers ( template_id, event_id );-- --
 CREATE INDEX idx_template_hsort ON template_handlers ( sort_order );-- --
 
 -- Author views
