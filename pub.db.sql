@@ -93,7 +93,7 @@ CREATE TABLE app_logs(
 		REFERENCES event_logs ( id )
 		ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX idx_app_event ON app_logs ( log_id );-- --
+CREATE UNIQUE INDEX idx_app_log ON app_logs ( log_id );-- --
 CREATE INDEX idx_log_code ON app_logs ( code );-- --
 CREATE INDEX idx_log_line ON app_logs ( line );-- --
 CREATE INDEX idx_log_origin ON app_logs ( origin )
@@ -132,7 +132,7 @@ CREATE TABLE web_logs(
 		REFERENCES event_logs ( id )
 		ON DELETE CASCADE
 );-- --
-CREATE UNIQUE INDEX idx_web_event ON web_logs ( log_id );-- --
+CREATE UNIQUE INDEX idx_web_log ON web_logs ( log_id );-- --
 CREATE INDEX idx_log_realm ON web_logs ( realm );-- --
 CREATE INDEX idx_log_ip ON web_logs ( ip );-- --
 CREATE INDEX idx_log_method ON web_logs ( method );-- --
@@ -717,6 +717,72 @@ END;-- --
 
 
 
+-- Secondary providers E.G. identity, two-factor, permissions etc...
+CREATE TABLE providers( 
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	label TEXT NOT NULL COLLATE NOCASE,
+	
+	-- Negotiation parameters for this specific provider
+	params TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	setting_id INTEGER DEFAULT NULL,
+	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	
+	CONSTRAINT fk_provider_settings
+		FOREIGN KEY ( setting_id ) 
+		REFERENCES settings ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE UNIQUE INDEX idx_provider_label ON providers( label );-- --
+CREATE INDEX idx_provider_settings ON providers( setting_id )
+	WHERE setting_id IS NOT NULL;-- --
+
+CREATE TABLE provider_meta(
+	provider_id INTEGER NOT NULL,
+	uuid TEXT NOT NULL COLLATE NOCASE,
+	realm TEXT NOT NULL COLLATE NOCASE,
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER DEFAULT NULL,
+	
+	CONSTRAINT fk_provider_meta
+		FOREIGN KEY ( provider_id ) 
+		REFERENCES providers( id ) 
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_provider_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE UNIQUE INDEX idx_provider ON provider_meta ( provider_id );-- --
+CREATE INDEX idx_provider_sort ON provider_meta( sort_order );-- --
+CREATE INDEX idx_provider_realm ON provider_meta( realm );-- --
+CREATE INDEX idx_provider_created ON provider_meta( created );-- --
+CREATE INDEX idx_provider_updated ON provider_meta( updated );-- --
+CREATE INDEX idx_provider_status ON provider_meta( status )
+	WHERE status IS NOT NULL;-- --
+
+CREATE TRIGGER provider_insert AFTER INSERT ON providers FOR EACH ROW
+BEGIN
+	INSERT INTO provider_meta( 
+		provider_id, uuid, realm
+	) VALUES ( 
+		NEW.id, 
+		( SELECT id FROM uuid ), 
+		COALESCE( json_extract( NEW.params, '$.realm' ), 'unknown' ) 
+	);
+END;-- --
+
+CREATE TRIGGER provider_update AFTER UPDATE ON providers FOR EACH ROW
+BEGIN
+	UPDATE provider_meta SET 
+		updated	= CURRENT_TIMESTAMP, 
+		realm	= COALESCE( json_extract( NEW.params, '$.realm' ), 'unknown' )
+		WHERE provider_id = NEW.id;
+END;-- --
+
+
 -- User roles, and permissions
 CREATE TABLE roles(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -798,13 +864,19 @@ CREATE UNIQUE INDEX idx_user_roles ON user_roles ( role_id, user_id );-- --
 CREATE TABLE role_permissions(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 	role_id INTEGER NOT NULL,
+	provider_id INTEGER DEFAULT NULL,
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_permission_role 
 		FOREIGN KEY ( role_id ) 
 		REFERENCES roles ( id )
-		ON DELETE CASCADE, 
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_permission_provider
+		FOREIGN KEY ( provider_id ) 
+		REFERENCES providers ( id )
+		ON DELETE SET NULL,
 	
 	CONSTRAINT fk_role_settings
 		FOREIGN KEY ( setting_id ) 
@@ -819,6 +891,7 @@ CREATE INDEX idx_permission_settings ON role_permissions ( setting_id )
 CREATE VIEW user_permission_view AS 
 SELECT 
 	user_id AS id, 
+	GROUP_CONCAT( rp.provider_id, ',' ) AS providers, 
 	GROUP_CONCAT( 
 		COALESCE( pg.info, '{}' ), ',' 
 	) AS role_settings,
@@ -839,61 +912,6 @@ SELECT
 	LEFT JOIN settings sp ON rp.setting_id = sp.id;-- --
 
 
-
-
-
--- Secondary identity providers for future use E.G. two-factor
-CREATE TABLE id_providers( 
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	label TEXT NOT NULL COLLATE NOCASE,
-	setting_id INTEGER DEFAULT NULL,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
-	
-	CONSTRAINT fk_id_provider_settings
-		FOREIGN KEY ( setting_id ) 
-		REFERENCES settings ( id )
-		ON DELETE SET NULL
-);-- --
-CREATE UNIQUE INDEX idx_id_provider_label ON id_providers( label );-- --
-CREATE INDEX idx_id_provider_settings ON id_providers( setting_id )
-	WHERE setting_id IS NOT NULL;-- --
-
-CREATE TABLE id_provider_meta(
-	provider_id INTEGER NOT NULL,
-	uuid TEXT DEFAULT NULL COLLATE NOCASE,
-	sort_order INTEGER NOT NULL DEFAULT 0,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
-	
-	CONSTRAINT fk_id_provider_meta
-		FOREIGN KEY ( provider_id ) 
-		REFERENCES id_providers( id ) 
-		ON DELETE CASCADE,
-	
-	CONSTRAINT fk_provider_status
-		FOREIGN KEY ( status ) 
-		REFERENCES statuses ( id )
-		ON DELETE SET NULL
-);-- --
-CREATE UNIQUE INDEX idx_provider ON id_provider_meta ( provider_id );-- --
-CREATE INDEX idx_provider_sort ON id_provider_meta( sort_order );-- --
-CREATE INDEX idx_provider_created ON id_provider_meta( created );-- --
-CREATE INDEX idx_provider_updated ON id_provider_meta( updated );-- --
-CREATE INDEX idx_provider_status ON id_provider_meta( status )
-	WHERE status IS NOT NULL;-- --
-
-CREATE TRIGGER id_provider_insert AFTER INSERT ON id_providers FOR EACH ROW
-BEGIN
-	INSERT INTO id_provider_meta( provider_id, uuid ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
-END;-- --
-
-CREATE TRIGGER id_provider_update AFTER UPDATE ON id_providers FOR EACH ROW
-BEGIN
-	UPDATE id_provider_meta SET updated = CURRENT_TIMESTAMP
-		WHERE provider_id = NEW.id;
-END;-- --
 
 -- User authentication and activity metadata
 CREATE TABLE user_auth(
@@ -940,10 +958,10 @@ CREATE TABLE user_auth(
 		
 	CONSTRAINT fk_auth_provider
 		FOREIGN KEY ( provider_id ) 
-		REFERENCES id_providers ( id )
+		REFERENCES providers ( id )
 		ON DELETE SET NULL,
 	
-	CONSTRAINT fk_id_provider_settings
+	CONSTRAINT fk_provider_settings
 		FOREIGN KEY ( setting_id ) 
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
@@ -1236,7 +1254,6 @@ CREATE TABLE events (
 		ON DELETE SET NULL
 );-- --
 CREATE UNIQUE INDEX idx_event_name ON events ( name );-- --
-CREATE INDEX idx_event_site ON events ( site_id );-- --
 CREATE INDEX idx_event_status ON events ( status )
 	WHERE status IS NOT NULL;-- --
 
@@ -1288,7 +1305,7 @@ CREATE VIEW event_handler_view AS SELECT
 	u.label AS status_label,
 	u.is_unique AS status_is_unique,
 	u.weight AS status_weight,
-	u.status AS status_value 
+	u.status AS status_value,
 	eh.priority AS priority,
 	eh.handler_id AS handler_id,
 	h.controller AS handler_controller,
@@ -2310,7 +2327,7 @@ BEGIN
 END;-- --
 
 -- Input/Output triggers
-CREATE TABLE template_events (
+CREATE TABLE template_events(
 	template_id INTEGER NOT NULL,
 	event_id INTEGER NOT NULL,
 	sort_order INTEGER DEFAULT 0,
@@ -2325,8 +2342,8 @@ CREATE TABLE template_events (
 		REFERENCES events ( id )
 		ON DELETE CASCADE
 );-- --
-CREATE INDEX idx_template_event ON template_handlers ( template_id, event_id );-- --
-CREATE INDEX idx_template_hsort ON template_handlers ( sort_order );-- --
+CREATE INDEX idx_template_event ON template_events ( template_id, event_id );-- --
+CREATE INDEX idx_template_hsort ON template_events ( sort_order );-- --
 
 -- Author views
 CREATE TABLE author_templates(
