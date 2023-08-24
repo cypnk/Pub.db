@@ -1684,6 +1684,7 @@ CREATE TABLE entries (
 	
 	-- If true, don't publish regardless of pub date
 	is_draft INTEGER NOT NULL DEFAULT 0,
+	
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
@@ -1774,6 +1775,9 @@ CREATE TABLE entry_content (
 	plain TEXT DEFAULT '' COLLATE NOCASE,
 	-- Content exactly as entered
 	content TEXT DEFAULT '' COLLATE NOCASE,
+	
+	-- Dynamically generated JSON
+	authorship TEXT NOT NULL DEFAULT '{ "authors" : [] }',
 	
 	CONSTRAINT fk_content_entry
 		FOREIGN KEY ( entry_id ) 
@@ -2040,6 +2044,39 @@ CREATE TABLE author_meta(
 CREATE TRIGGER author_insert AFTER INSERT ON authors FOR EACH ROW
 BEGIN
 	INSERT INTO author_meta( author_id ) VALUES ( NEW.id );
+	
+	-- Person-based authorship JSON array
+	UPDATE entry_content SET authorship = 
+		'{ "authors" : [ ' || ( 
+		SELECT GROUP_CONCAT( ' {' || 
+			-- Person info
+			'"id" : ' || pa.person_id || ', ' || 
+			'"urn" : "' || pd.urn || '", ' || 
+			'"name" : "' || pd.name || '", ' || 
+			'"title" : "' || pd.title || '", ' || 
+			'"contact" : "' || COALESCE( pd.contact, '' ) || '", ' || 
+			'"status" : ' || p.status || ', ' || 
+			
+			-- Author metadata
+			'"updated" : "' || am.updated || '", ', 
+			'"sort" : ' || am.sort_order || ', ' || 
+			
+			-- User detail for additional info (Roles etc..)
+			'"user_id" : ' || p.user_id || ' }', 
+		',' ) 
+		
+		FROM authors pa
+		LEFT JOIN persons p ON pa.person_id = p.id
+		LEFT JOIN author_meta am ON pa.id = am.author_id
+		LEFT JOIN person_desc pd ON pa.person_id = pd.person_id
+		
+		WHERE pa.content_id = NEW.content_id 
+		GROUP BY pa.id 
+		ORDER BY am.sort_order DESC
+		
+	) || ' ] }' 
+	
+	WHERE id = NEW.content_id;
 END;-- --
 
 -- Entry author meta update
@@ -2047,8 +2084,70 @@ CREATE TRIGGER author_update AFTER UPDATE ON authors FOR EACH ROW
 BEGIN
 	UPDATE author_meta SET updated = CURRENT_TIMESTAMP
 		WHERE author_id = NEW.author_id;
+	
+	UPDATE entry_content SET authorship = 
+		'{ "authors" : [ ' || ( 
+		SELECT GROUP_CONCAT( ' {' || 
+			'"id" : ' || pa.person_id || ', ' || 
+			'"urn" : "' || pd.urn || '", ' || 
+			'"name" : "' || pd.name || '", ' || 
+			'"title" : "' || pd.title || '", ' || 
+			'"contact" : "' || COALESCE( pd.contact, '' ) || '", ' || 
+			'"status" : ' || p.status || ', ' || 
+			
+			'"updated" : "' || am.updated || '", ', 
+			'"sort" : ' || am.sort_order || ', ' || 
+			
+			'"user_id" : ' || p.user_id || ' }', 
+		',' ) 
+		
+		FROM authors pa
+		LEFT JOIN persons p ON pa.person_id = p.id
+		LEFT JOIN author_meta am ON pa.id = am.author_id
+		LEFT JOIN person_desc pd ON pa.person_id = pd.person_id
+		
+		WHERE pa.content_id = NEW.content_id 
+		GROUP BY pa.id 
+		ORDER BY am.sort_order DESC
+		
+	) || ' ] }' 
+	
+	WHERE id = NEW.content_id;
 END;-- --
 
+-- Update authorship
+CREATE TRIGGER author_delete BEFORE DELETE ON authors FOR EACH ROW
+BEGIN
+	UPDATE entry_content SET authorship = 
+		'{ "authors" : [ ' || ( 
+		SELECT GROUP_CONCAT( ' {' || 
+			'"id" : ' || pa.person_id || ', ' || 
+			'"urn" : "' || pd.urn || '", ' || 
+			'"name" : "' || pd.name || '", ' || 
+			'"title" : "' || pd.title || '", ' || 
+			'"contact" : "' || COALESCE( pd.contact, '' ) || '", ' || 
+			'"status" : ' || p.status || ', ' || 
+			
+			'"updated" : "' || am.updated || '", ', 
+			'"sort" : ' || am.sort_order || ', ' || 
+			
+			'"user_id" : ' || p.user_id || ' }', 
+		',' ) 
+		
+		FROM authors pa
+		LEFT JOIN persons p ON pa.person_id = p.id
+		LEFT JOIN author_meta am ON pa.id = am.author_id
+		LEFT JOIN person_desc pd ON pa.person_id = pd.person_id
+		
+		-- Exclude deleted author
+		WHERE pa.content_id = OLD.content_id AND pa.id IS NOT OLD.id
+		GROUP BY pa.id 
+		ORDER BY am.sort_order DESC
+		
+	) || ' ] }' 
+	
+	WHERE id = NEW.content_id;
+END;-- --
 
 
 -- Content locations
