@@ -1183,6 +1183,28 @@ CREATE TABLE route_markers(
 );-- --
 CREATE UNIQUE INDEX idx_route_marker_pattern ON route_markers( pattern );-- --
 
+INSERT INTO route_markers( pattern, replacement ) 
+VALUES 
+( '*', '(?<all>.+)' ),
+( ':id', '(?<id>[1-9][0-9]*)' ),
+( ':page', '(?<page>[1-9][0-9]*)' ),
+( ':label', '(?<label>[\\\\pL\\\\pN\\\\s_\\\\-]{1,30})' ),
+( ':nonce', '(?<nonce>[a-z0-9]{10,30})' ),
+( ':token', '(?<token>[a-z0-9\\\\+\\\\=\\\\-\\\\%]{10,255})' ),
+( ':meta', '(?<meta>[a-z0-9\\\\+\\\\=\\\\-\\\\%]{7,255})' ),
+( ':tag', '(?<tag>[\\\\pL\\\\pN\\\\s_\\\\,\\\\-]{1,80})' ),
+( ':tags', '(?<tags>[\\\\pL\\\\pN\\\\s_\\\\,\\\\-]{1,255})' ),
+( ':year', '(?<year>[2][0-9]{3})' ),
+( ':month', '(?<month>[0-3][0-9]{1})' ),
+( ':day', '(?<day>[0-9][0-9]{1})' ),
+( ':slug', '(?<slug>[\\\\pL\\\\-\\\\d]{1,100})' ),
+( ':tree', '(?<tree>[\\\\pL\\\\/\\\\-_\\\\d\\\\s]{1,255})' ),
+( ':file', '(?<file>[\\\\pL_\\\\-\\\\d\\\\.\\\\s]{1,255})' ),
+( ':find', '(?<find>[\\\\pL\\\\pN\\\\s\\\\-_,\\\\.\\\\:\\\\+]{2,255})' ),
+( ':redir', '(?<redir>[a-z_\\\\:\\\\/\\\\-\\\\d\\\\.\\\\s]{1,120})' ),
+( ':lang', '(?<lang>[a-z]{2,3})(?:-(?<locale>[a-z]{2,8}))?' );-- --
+
+
 -- Application handlers
 CREATE TABLE handlers(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
