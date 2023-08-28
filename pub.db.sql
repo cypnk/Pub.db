@@ -743,6 +743,7 @@ CREATE TABLE provider_meta(
 	sort_order INTEGER NOT NULL DEFAULT 0,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	expires DATETIME DEFAULT NULL,
 	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_provider_meta
@@ -760,6 +761,8 @@ CREATE INDEX idx_provider_sort ON provider_meta( sort_order );-- --
 CREATE INDEX idx_provider_realm ON provider_meta( realm );-- --
 CREATE INDEX idx_provider_created ON provider_meta( created );-- --
 CREATE INDEX idx_provider_updated ON provider_meta( updated );-- --
+CREATE INDEX idx_provider_params_exp ON provider_meta( expires )
+	WHERE expires IS NOT NULL;-- -
 CREATE INDEX idx_provider_status ON provider_meta( status )
 	WHERE status IS NOT NULL;-- --
 
