@@ -1972,6 +1972,9 @@ CREATE INDEX idx_person_contact ON person_desc ( contact )
 CREATE INDEX idx_person_language ON person_desc ( language_id )
 	WHERE language_id IS NOT NULL;-- --
 
+-- Bio, name, and title search
+CREATE VIRTUAL TABLE person_search 
+	USING fts4( profile, tokenize=unicode61 );-- --
 
 CREATE TRIGGER person_insert AFTER INSERT ON persons FOR EACH ROW
 BEGIN
