@@ -2076,22 +2076,27 @@ BEGIN
 	-- Person-based authorship JSON array
 	UPDATE entry_content SET authorship = 
 		'{ "authors" : [ ' || ( 
-		SELECT GROUP_CONCAT( ' {' || 
+		SELECT GROUP_CONCAT( selection, ',' ) AS authors
+		
+		FROM (
+		SELECT ' {' || 
 			-- Person info
-			'"id" : ' || pa.person_id || ', ' || 
-			'"urn" : "' || pd.urn || '", ' || 
-			'"name" : "' || pd.name || '", ' || 
-			'"title" : "' || pd.title || '", ' || 
-			'"contact" : "' || COALESCE( pd.contact, '' ) || '", ' || 
-			'"status" : ' || p.status || ', ' || 
+			'"id" : '	|| pa.person_id	|| ', '	|| 
+			'"urn" : "'	|| pd.urn	|| '", ' || 
+			'"name" : "'	|| pd.name	|| '", ' || 
+			'"title" : "'	|| pd.title	|| '", ' || 
+			'"lang_id" : '	|| pd.lang_id	|| ', ' || 
+			'"contact" : "'	|| 
+				COALESCE( pd.contact, '' ) || '", ' || 
 			
 			-- Author metadata
-			'"updated" : "' || am.updated || '", ', 
-			'"sort" : ' || am.sort_order || ', ' || 
+			'"updated" : "'	|| am.updated	|| '", ' || 
+			'"sort" : '	|| am.sort_order|| ', ' || 
+			'"status" : '	|| p.status	|| ', ' || 
 			
 			-- User detail for additional info (Roles etc..)
-			'"user_id" : ' || p.user_id || ' }', 
-		',' ) 
+			'"user_id" : ' || p.user_id || 
+		' }' AS selection
 		
 		FROM authors pa
 		LEFT JOIN persons p ON pa.person_id = p.id
@@ -2101,6 +2106,7 @@ BEGIN
 		WHERE pa.content_id = NEW.content_id 
 		GROUP BY pa.id 
 		ORDER BY am.sort_order DESC
+		)
 		
 	) || ' ] }' 
 	
@@ -2115,19 +2121,24 @@ BEGIN
 	
 	UPDATE entry_content SET authorship = 
 		'{ "authors" : [ ' || ( 
-		SELECT GROUP_CONCAT( ' {' || 
-			'"id" : ' || pa.person_id || ', ' || 
-			'"urn" : "' || pd.urn || '", ' || 
-			'"name" : "' || pd.name || '", ' || 
-			'"title" : "' || pd.title || '", ' || 
-			'"contact" : "' || COALESCE( pd.contact, '' ) || '", ' || 
-			'"status" : ' || p.status || ', ' || 
+		SELECT GROUP_CONCAT( selection, ',' ) AS authors
+		
+		FROM (
+		SELECT ' {' || 
+			'"id" : '	|| pa.person_id	|| ', '	|| 
+			'"urn" : "'	|| pd.urn	|| '", ' || 
+			'"name" : "'	|| pd.name	|| '", ' || 
+			'"title" : "'	|| pd.title	|| '", ' || 
+			'"lang_id" : '	|| pd.lang_id	|| ', ' || 
+			'"contact" : "'	|| 
+				COALESCE( pd.contact, '' ) || '", ' || 
 			
-			'"updated" : "' || am.updated || '", ', 
-			'"sort" : ' || am.sort_order || ', ' || 
+			'"updated" : "'	|| am.updated	|| '", ' || 
+			'"sort" : '	|| am.sort_order|| ', ' || 
+			'"status" : '	|| p.status	|| ', ' || 
 			
-			'"user_id" : ' || p.user_id || ' }', 
-		',' ) 
+			'"user_id" : ' || p.user_id || 
+		' }' AS selection 
 		
 		FROM authors pa
 		LEFT JOIN persons p ON pa.person_id = p.id
@@ -2137,6 +2148,7 @@ BEGIN
 		WHERE pa.content_id = NEW.content_id 
 		GROUP BY pa.id 
 		ORDER BY am.sort_order DESC
+		)
 		
 	) || ' ] }' 
 	
@@ -2148,19 +2160,24 @@ CREATE TRIGGER author_delete BEFORE DELETE ON authors FOR EACH ROW
 BEGIN
 	UPDATE entry_content SET authorship = 
 		'{ "authors" : [ ' || ( 
-		SELECT GROUP_CONCAT( ' {' || 
-			'"id" : ' || pa.person_id || ', ' || 
-			'"urn" : "' || pd.urn || '", ' || 
-			'"name" : "' || pd.name || '", ' || 
-			'"title" : "' || pd.title || '", ' || 
-			'"contact" : "' || COALESCE( pd.contact, '' ) || '", ' || 
-			'"status" : ' || p.status || ', ' || 
+		SELECT GROUP_CONCAT( selection, ',' ) AS authors
+		
+		FROM (
+		SELECT ' {' || 
+			'"id" : '	|| pa.person_id	|| ', '	|| 
+			'"urn" : "'	|| pd.urn	|| '", ' || 
+			'"name" : "'	|| pd.name	|| '", ' || 
+			'"title" : "'	|| pd.title	|| '", ' || 
+			'"lang_id" : '	|| pd.lang_id	|| ', ' || 
+			'"contact" : "'	|| 
+				COALESCE( pd.contact, '' ) || '", ' || 
 			
-			'"updated" : "' || am.updated || '", ', 
-			'"sort" : ' || am.sort_order || ', ' || 
+			'"updated" : "'	|| am.updated	|| '", ' || 
+			'"sort" : '	|| am.sort_order|| ', ' || 
+			'"status" : '	|| p.status	|| ', ' || 
 			
-			'"user_id" : ' || p.user_id || ' }', 
-		',' ) 
+			'"user_id" : '	|| p.user_id || 
+		' }' AS selection
 		
 		FROM authors pa
 		LEFT JOIN persons p ON pa.person_id = p.id
@@ -2171,6 +2188,7 @@ BEGIN
 		WHERE pa.content_id = OLD.content_id AND pa.id IS NOT OLD.id
 		GROUP BY pa.id 
 		ORDER BY am.sort_order DESC
+		)
 		
 	) || ' ] }' 
 	
