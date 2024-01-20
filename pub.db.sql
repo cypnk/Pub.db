@@ -2608,7 +2608,7 @@ CREATE VIEW collection_view AS SELECT
 	
 	-- Collection categories
 	'{ "categories" : [ ' || 
-	GROUP_CONCAT(
+	GROUP_CONCAT( '{ ' || 
 		'"id":'			|| categories.id		|| ',' || 
 		'"parent_id":'		|| COALESCE( categories.parent_id, 0 )	|| ',' ||
 		'"collection_id"'	|| categories.collection_id	|| ',' ||
