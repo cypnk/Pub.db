@@ -1704,7 +1704,7 @@ CREATE TABLE entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 	-- Optional direct parent
 	parent_id INTEGER DEFAULT NULL 
-		REFERENCES entries ( id ),
+		REFERENCES entries ( id ) ON DELETE SET NULL,
 	type_id INTEGER NOT NULL,
 	
 	-- If true, don't publish regardless of pub date
@@ -1941,7 +1941,7 @@ CREATE UNIQUE INDEX idx_entry_source ON
 
 -- Hierarchy
 CREATE TRIGGER entry_parent AFTER INSERT ON entries FOR EACH ROW
-WHEN entries.parent_id <> NULL
+WHEN entries.parent_id IS NOT NULL
 BEGIN
 	INSERT INTO entry_sources ( entry_id, source_entry_id ) 
 		VALUES ( NEW.rowid, NEW.parent_id );
@@ -2417,7 +2417,8 @@ CREATE TABLE templates(
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE INDEX idx_template_parent ON templates ( parent_id );-- --
+CREATE INDEX idx_template_parent ON templates ( parent_id )
+	WHERE parent_id IS NOT NULL;-- --
 CREATE UNIQUE INDEX idx_template_url ON templates ( url )
 	WHERE url IS NOT NULL;-- --
 CREATE INDEX idx_template_settings ON templates ( setting_id )
@@ -2513,24 +2514,61 @@ CREATE VIEW service_view AS SELECT
 	sites.basepath AS basepath,
 	settings.info AS settings,
 	sites.settings_override AS settings_override,
-	GROUP_CONCAT(
-		'id='			|| workspaces.id, ','
-	) AS wkspaces,
-	GROUP_CONCAT(
-		'id='			|| collections.id	|| '&' || 
-		'urn='			|| collection_meta.urn	|| '&' || 
-		'workspace_id='		|| collections.workspace_id, ','
-	) AS colls,
-	GROUP_CONCAT(
-		'id='			|| categories.id	|| '&' || 
-		'urn='			|| category_meta.urn	|| '&' || 
-		'collection_id='	|| categories.collection_id, ','
-	) AS cats,
-	GROUP_CONCAT(
-		'id='			|| accept.id		|| '&' || 
-		'mime_type='		|| accept.mime_type	|| '&' || 
-		'collection_id='	|| accept.collection_id, ','
-	) AS collaccept
+	
+	-- Site workspaces
+	'{ "workspaces" : [ ' || 
+	GROUP_CONCAT( '{ ' || 
+		'"id":'			|| workspaces.id		|| ',' ||
+		'"urn":'		|| workspace_meta.urn		|| ',' ||
+		'"setting_id":'		|| workspaces.setting_id	|| ',' ||
+		'"settings_override":'	|| workspaces.settings_override	|| ',' ||
+		'"created":"'		|| workspace_meta.created	|| '",' ||
+		'"updated":"'		|| workspace_meta.updated	|| '",' ||
+		'"status":'		|| COALESCE( workspace_meta.status, 0 ) ||
+	' }' ) || ' ] }' AS wkspaces,
+	
+	-- Site collections 
+	'{ "collections" : [ ' ||  
+	GROUP_CONCAT( '{ ' || 
+		'"id":'			|| collections.id		|| ',' || 
+		'"workspace_id":'	|| collections.workspace_id	|| ',' ||
+		'"urn":"'		|| collection_meta.urn		|| '",' || 
+		'"entry_count":'	|| collection_meta.entry_count	|| ',' ||  
+		'"category_count":'	|| collection_meta.category_count|| ',' ||
+		'"created":"'		|| collection_meta.created	|| '",' ||
+		'"updated":"'		|| collection_meta.updated	|| '",' ||	
+		'"status":'		|| COALESCE( collection_meta.status, 0 ) ||
+		
+		-- Collection accept types
+		'"accept" : [ ' || ( 
+			SELECT 
+			GROUP_CONCAT( '{ ' || 
+				'"id":'		|| accept.id		|| ',' || 
+				'"mime_type":"'	|| accept.mime_type	|| '"}' 
+			) AS collaccept  
+			FROM accept WHERE accept.collection_id = collections.id
+		) || ' ], ' || 
+		
+		-- Collection categories
+		'"categories" : [ ' || (
+			SELECT 
+			GROUP_CONCAT( '{ ' || 
+			'"id":'		|| categories.id		|| ',' ||
+			
+			-- Needed for breadcrumbs
+			'"parent_id":'	|| COALESCE( categories.parent_id, 0 )	|| ',' ||
+			
+			'"urn":'	|| category_meta.urn		|| '",' || 
+			'"created":"'	|| category_meta.created	|| '",' ||
+			'"updated":"'	|| category_meta.updated	|| '",' ||
+			'"sort_order":'	|| category_meta.sort_order	|| ',' ||  		
+			'"status":'	|| COALESCE( category_meta.status, 0 ) || '}'
+			) AS cats 
+			FROM categories 
+			LEFT JOIN category_meta ON categories.id = category_meta.category_id 
+			WHERE categories.collection_id = collections.id 
+		) || ' ] ' 
+	) || ' } ] }' AS colls
 	
 	FROM sites
 	INNER JOIN site_workspaces ON 
@@ -2538,12 +2576,10 @@ CREATE VIEW service_view AS SELECT
 	LEFT JOIN settings ON sites.setting_id = settings.id
 	LEFT JOIN workspaces ON 
 		site_workspaces.workspace_id = workspaces.id
+	LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.id 
 	LEFT JOIN collections ON 
 		workspaces.id = collections.workspace_id
-	LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id 
-	LEFT JOIN categories ON collections.id = categories.collection_id
-	LEFT JOIN category_meta ON categories.id = category_meta.category_id
-	LEFT JOIN accept ON collections.id = accept.collection_id;-- --
+	LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id;-- --
 
 -- Collection
 -- Usage:
@@ -2563,18 +2599,25 @@ CREATE VIEW collection_view AS SELECT
 	workspaces.id AS workspace_id,
 	
 	-- Collection accept types
-	GROUP_CONCAT(
-		'id='			|| accept.id		|| '&' || 
-		'mime_type='		|| accept.mime_type	|| '&' || 
-		'collection_id='	|| accept.collection_id, ','
-	) AS colaccept,
+	'{ "accept" : [ ' || 
+	GROUP_CONCAT( '{ ' || 
+		'"id":'			|| accept.id			|| ',' || 
+		'"mime_type":"'		|| accept.mime_type		|| '",' || 
+		'"collection_id":'	|| accept.collection_id		||
+	' }' ) || ' ] }' AS collaccept,
 	
 	-- Collection categories
+	'{ "categories" : [ ' || 
 	GROUP_CONCAT(
-		'id='			|| categories.id	|| '&' || 
-		'urn='			|| category_meta.urn	|| '&' || 
-		'collection_id='	|| categories.collection_id, ','
-	) AS cats
+		'"id":'			|| categories.id		|| ',' || 
+		'"parent_id":'		|| COALESCE( categories.parent_id, 0 )	|| ',' ||
+		'"collection_id"'	|| categories.collection_id	|| ',' ||
+		'"urn":'		|| category_meta.urn		|| '",' || 
+		'"created":"'		|| category_meta.created	|| '",' ||
+		'"updated":"'		|| category_meta.updated	|| '",' ||
+		'"sort_order":'		|| category_meta.sort_order	|| ',' ||  		
+		'"status":'		|| COALESCE( category_meta.status, 0 ) ||
+	' }' ) || ' ] }' AS cats
 		
 	FROM collections
 	INNER JOIN site_workspaces ON 
