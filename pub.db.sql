@@ -2567,8 +2567,8 @@ CREATE VIEW service_view AS SELECT
 			FROM categories 
 			LEFT JOIN category_meta ON categories.id = category_meta.category_id 
 			WHERE categories.collection_id = collections.id 
-		) || ' ] ' 
-	) || ' } ] }' AS colls
+		) || '] }' 
+	) || ' ] }' AS colls
 	
 	FROM sites
 	INNER JOIN site_workspaces ON 
