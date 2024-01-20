@@ -2525,50 +2525,55 @@ CREATE VIEW service_view AS SELECT
 		'"created":"'		|| workspace_meta.created	|| '",' ||
 		'"updated":"'		|| workspace_meta.updated	|| '",' ||
 		'"status":'		|| COALESCE( workspace_meta.status, 0 ) ||
-	' }' ) || ' ] }' AS wkspaces,
-	
-	-- Site collections 
-	'{ "collections" : [ ' ||  
-	GROUP_CONCAT( '{ ' || 
-		'"id":'			|| collections.id		|| ',' || 
-		'"workspace_id":'	|| collections.workspace_id	|| ',' ||
-		'"urn":"'		|| collection_meta.urn		|| '",' || 
-		'"entry_count":'	|| collection_meta.entry_count	|| ',' ||  
-		'"category_count":'	|| collection_meta.category_count|| ',' ||
-		'"created":"'		|| collection_meta.created	|| '",' ||
-		'"updated":"'		|| collection_meta.updated	|| '",' ||	
-		'"status":'		|| COALESCE( collection_meta.status, 0 ) ||
 		
-		-- Collection accept types
-		'"accept" : [ ' || ( 
+		-- Site collections 
+		'"collections" : [ ' || ( 
 			SELECT 
 			GROUP_CONCAT( '{ ' || 
-				'"id":'		|| accept.id		|| ',' || 
-				'"mime_type":"'	|| accept.mime_type	|| '"}' 
-			) AS collaccept  
-			FROM accept WHERE accept.collection_id = collections.id
-		) || ' ], ' || 
-		
-		-- Collection categories
-		'"categories" : [ ' || (
-			SELECT 
-			GROUP_CONCAT( '{ ' || 
-			'"id":'		|| categories.id		|| ',' ||
-			
-			-- Needed for breadcrumbs
-			'"parent_id":'	|| COALESCE( categories.parent_id, 0 )	|| ',' ||
-			
-			'"urn":'	|| category_meta.urn		|| '",' || 
-			'"created":"'	|| category_meta.created	|| '",' ||
-			'"updated":"'	|| category_meta.updated	|| '",' ||
-			'"sort_order":'	|| category_meta.sort_order	|| ',' ||  		
-			'"status":'	|| COALESCE( category_meta.status, 0 ) || '}'
-			) AS cats 
-			FROM categories 
-			LEFT JOIN category_meta ON categories.id = category_meta.category_id 
-			WHERE categories.collection_id = collections.id 
-		) || '] }' 
-	) || ' ] }' AS colls
+				'"id":'			|| collections.id		|| ',' || 
+				'"workspace_id":'	|| collections.workspace_id	|| ',' ||
+				'"urn":"'		|| collection_meta.urn		|| '",' || 
+				'"entry_count":'	|| collection_meta.entry_count	|| ',' ||  
+				'"category_count":'	|| collection_meta.category_count|| ',' ||
+				'"created":"'		|| collection_meta.created	|| '",' ||
+				'"updated":"'		|| collection_meta.updated	|| '",' ||	
+				'"status":'		|| COALESCE( collection_meta.status, 0 ) ||
+				
+				-- Collection accept types
+				'"accept" : [ ' || ( 
+					SELECT 
+					GROUP_CONCAT( '{ ' || 
+						'"id":'		|| accept.id		|| ',' || 
+						'"mime_type":"'	|| accept.mime_type	|| '"}' 
+					) AS collaccept  
+					FROM accept WHERE accept.collection_id = collections.id
+				) || ' ], ' || 
+				
+				-- Collection categories
+				'"categories" : [ ' || (
+					SELECT 
+					GROUP_CONCAT( '{ ' || 
+						'"id":'		|| categories.id		|| ',' ||
+						
+						-- Needed for breadcrumbs
+						'"parent_id":'	|| COALESCE( categories.parent_id, 0 )	|| ',' ||
+						
+						'"urn":'	|| category_meta.urn		|| '",' || 
+						'"created":"'	|| category_meta.created	|| '",' ||
+						'"updated":"'	|| category_meta.updated	|| '",' ||
+						'"sort_order":'	|| category_meta.sort_order	|| ',' ||  		
+						'"status":'	|| COALESCE( category_meta.status, 0 ) || '}'
+					) AS cats 
+					FROM categories 
+					LEFT JOIN category_meta ON categories.id = category_meta.category_id 
+					WHERE categories.collection_id = collections.id 
+				) || '] }' 
+			) AS colls
+			FROM collections 
+			LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id
+			WHERE workspaces.id = collections.workspace_id 
+		) || ' ] }' 
+	) || ' ] }' AS wkspaces
 	
 	FROM sites
 	INNER JOIN site_workspaces ON 
@@ -2576,10 +2581,7 @@ CREATE VIEW service_view AS SELECT
 	LEFT JOIN settings ON sites.setting_id = settings.id
 	LEFT JOIN workspaces ON 
 		site_workspaces.workspace_id = workspaces.id
-	LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.id 
-	LEFT JOIN collections ON 
-		workspaces.id = collections.workspace_id
-	LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id;-- --
+	LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.id;-- --
 
 -- Collection
 -- Usage:
