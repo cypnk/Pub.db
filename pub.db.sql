@@ -282,6 +282,7 @@ INSERT INTO languages (
 ( 'ia', 'Interlingua', 'Interlingua' ),
 ( 'it', 'Italiano', 'Italian' ),
 ( 'jp', '日本語', 'Japanese' ),
+( 'jv', 'ꦧꦱꦗꦮ', 'Javanese' ),
 ( 'ka', 'ქართული ენა', 'Georgian' ),
 ( 'kn', 'ಕನ್ನಡ', 'Kannada' ),
 ( 'ko', '조선말', 'Korean' ),
@@ -289,6 +290,7 @@ INSERT INTO languages (
 ( 'lo', 'ພາສາລາວ', 'Lao' ),
 ( 'lv', 'Latviešu valoda', 'Latvian' ),
 ( 'ml', 'Melayu', 'Malay' ),
+( 'mr', 'मराठी', 'Marathi' ),
 ( 'my', 'မြန်မာဘာသာ', 'Myanmar' ),
 ( 'nl', 'Nederlands', 'Dutch' ),
 ( 'no', 'Norsk', 'Norwegian' ),
@@ -302,15 +304,17 @@ INSERT INTO languages (
 ( 'si', 'සිංහල', 'Sinhalese' ),
 ( 'sr', 'Srpski', 'Serbian' ),
 ( 'sv', 'Svenska', 'Swedish' ),
+( 'sw', 'کِسْوَهِيلِ', 'Swahili' ),
 ( 'ta', 'தமிழ்', 'Tamil' ),
 ( 'te', 'తెలుగు', 'Telugu' ),
 ( 'th', 'ภาษาไทย', 'Thai' ),
 ( 'tk', 'türkmençe', 'Turkmen' ),
-( 'tr', 'Türkçe', 'Turkish' ),
+( 'tr', 'Türk dili', 'Turkish' ),
 ( 'uk', 'Українська', 'Ukranian' ),
 ( 'ur', 'اُردُو‬', 'Urdu' ),
 ( 'uz', 'oʻzbek tili', 'Uzbek' ),
 ( 'vi', 'Tiếng Việt', 'Vietnamese' ),
+( 'yo', 'Èdè Yorùbá', 'Yoruba' ),
 ( 'zh', '中文', 'Chinese' );-- --
 
 
@@ -515,7 +519,7 @@ CREATE VIEW sites_enabled AS SELECT
 	GROUP_CONCAT( DISTINCT a.basename ) AS base_alias,
 	COALESCE( sg.info, '{}' ) AS settings,
 	s.settings_override AS settings_override, 
-	sm.uri AS uri,
+	sm.url AS url,
 	sm.created AS created,
 	sm.updated AS updated
 	
@@ -1192,6 +1196,7 @@ VALUES
 ( ':nonce', '(?<nonce>[a-z0-9]{10,30})' ),
 ( ':token', '(?<token>[a-z0-9\\\\+\\\\=\\\\-\\\\%]{10,255})' ),
 ( ':meta', '(?<meta>[a-z0-9\\\\+\\\\=\\\\-\\\\%]{7,255})' ),
+( ':user', '(?<user>[\\\\pL\\\\d_\\\\-]{1,50})' ),
 ( ':tag', '(?<tag>[\\\\pL\\\\pN\\\\s_\\\\,\\\\-]{1,80})' ),
 ( ':tags', '(?<tags>[\\\\pL\\\\pN\\\\s_\\\\,\\\\-]{1,255})' ),
 ( ':year', '(?<year>[2][0-9]{3})' ),
@@ -1226,6 +1231,7 @@ CREATE INDEX idx_handler_settings ON handlers( setting_id )
 
 CREATE TABLE handler_meta(
 	handler_id INTEGER NOT NULL,
+	fixed_priority INTEGER NOT NULL DEFAULT 0,
 	status INTEGER DEFAULT NULL,
 	
 	CONSTRAINT fk_handler_meta
@@ -1253,7 +1259,8 @@ CREATE VIEW handler_view AS SELECT
 	h.controller AS controller,
 	s.info AS settings, 
 	h.settings_override AS settings_override,
-	h.status AS status,
+	hm.status AS status,
+	hm.fixed_priority AS fixed_priority,
 	u.label AS status_label,
 	u.is_unique AS status_is_unique,
 	u.weight AS status_weight,
