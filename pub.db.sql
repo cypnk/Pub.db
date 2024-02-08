@@ -2573,7 +2573,8 @@ CREATE VIEW service_view AS SELECT
 					) AS cats 
 					FROM categories 
 					LEFT JOIN category_meta ON categories.id = category_meta.category_id 
-					WHERE categories.collection_id = collections.id 
+					LEFT JOIN category_collections ON categories.id = category_collections.category_id
+					WHERE category_collections.collection_id = collections.id 
 				) || '] }' 
 			) AS colls
 			FROM collections 
@@ -2588,7 +2589,7 @@ CREATE VIEW service_view AS SELECT
 	LEFT JOIN settings ON sites.setting_id = settings.id
 	LEFT JOIN workspaces ON 
 		site_workspaces.workspace_id = workspaces.id
-	LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.id;-- --
+	LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.workspace_id;-- --
 
 -- Collection
 -- Usage:
@@ -2596,7 +2597,9 @@ CREATE VIEW service_view AS SELECT
 -- SELECT * FROM collection_view WHERE sites.id = :site_id
 CREATE VIEW collection_view AS SELECT 
 	collections.id AS id, 
-	collections.urn AS urn,
+	collection_meta.urn AS urn,
+	collection_meta.category_count AS category_count,
+	collection_meta.entry_count AS entry_count,
 	s.info AS settings,
 	collections.settings_override AS settings_override,
 	
@@ -2620,7 +2623,7 @@ CREATE VIEW collection_view AS SELECT
 	GROUP_CONCAT( '{ ' || 
 		'"id":'			|| categories.id		|| ',' || 
 		'"parent_id":'		|| COALESCE( categories.parent_id, 0 )	|| ',' ||
-		'"collection_id"'	|| categories.collection_id	|| ',' ||
+		'"collection_id"'	|| category_collections.collection_id	|| ',' ||
 		'"urn":'		|| category_meta.urn		|| '",' || 
 		'"created":"'		|| category_meta.created	|| '",' ||
 		'"updated":"'		|| category_meta.updated	|| '",' ||
@@ -2632,9 +2635,11 @@ CREATE VIEW collection_view AS SELECT
 	INNER JOIN site_workspaces ON 
 		collections.workspace_id = site_workspaces.workspace_id
 	INNER JOIN sites ON site_workspaces.site_id = sites.id
+	LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id 
 	LEFT JOIN settings s ON sites.setting_id = s.id
 	LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id
-	LEFT JOIN categories ON collections.id = categories.collection_id
+	LEFT JOIN category_collections ON collections.id = category_collections.collection_id
+	LEFT JOIN categories ON category_collections.category_id = categories.id
 	LEFT JOIN category_meta ON categories.id = category_meta.category_id
 	LEFT JOIN accept ON collections.id = accept.collection_id;-- --
 
