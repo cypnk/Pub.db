@@ -274,7 +274,7 @@ INSERT INTO languages (
 ( 'fr', 'Français', 'French' ),
 ( 'ga', 'Gaeilge', 'Gaelic' ),
 ( 'gu', 'ગુજરાતી', 'Gujarati' ),
-( 'he', 'עברית‬', 'Hebrew' ),
+( 'he', 'עברית', 'Hebrew' ),
 ( 'hi', 'हिंदी', 'Hindi' ),
 ( 'hr', 'Hrvatski', 'Croatian' ),
 ( 'hu', 'Magyar', 'Hungarian' ),
@@ -311,7 +311,7 @@ INSERT INTO languages (
 ( 'tk', 'türkmençe', 'Turkmen' ),
 ( 'tr', 'Türk dili', 'Turkish' ),
 ( 'uk', 'Українська', 'Ukranian' ),
-( 'ur', 'اُردُو‬', 'Urdu' ),
+( 'ur', 'اُردُو', 'Urdu' ),
 ( 'uz', 'oʻzbek tili', 'Uzbek' ),
 ( 'vi', 'Tiếng Việt', 'Vietnamese' ),
 ( 'yo', 'Èdè Yorùbá', 'Yoruba' ),
@@ -2245,6 +2245,11 @@ CREATE TABLE place_meta(
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	status INTEGER DEFAULT NULL,
 	
+	CONSTRAINT fk_place_meta
+		FOREIGN KEY ( place_id )
+		REFERENCES places ( id )
+		ON DELETE CASCADE,
+	
 	CONSTRAINT fk_place_status
 		FOREIGN KEY ( status ) 
 		REFERENCES statuses ( id )
@@ -2399,6 +2404,136 @@ CREATE INDEX idx_coll_place_sort ON
 
 
 
+-- Uploaded media/attachments
+CREATE TABLE resources(
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	
+	-- Path on disk
+	src TEXT NOT NULL COLLATE NOCASE,
+	
+	-- Size in bytes
+	filesize INTEGER NOT NULL DEFAULT 0,
+	
+	-- SHA256 etc...
+	hash_algo TEXT NOT NULL COLLATE NOCASE,
+	file_hash TEXT NOT NULL COLLATE NOCASE,
+	
+	-- image/jpeg, video/ogg etc...
+	mime_type TEXT NOT NULL COLLATE NOCASE,
+	thumbnail TEXT DEFAULT NULL COLLATE NOCASE
+);-- --
+CREATE UNIQUE INDEX idx_resource_src ON resources( src );-- --
+CREATE INDEX idx_resource_mime ON resources( mime_type );-- --
+CREATE INDEX idx_resource_hash ON resources( file_hash );-- --
+CREATE INDEX idx_resource_size ON resources( filesize );-- --
+
+CREATE TABLE resource_meta (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	resource_id INTEGER NOT NULL,
+	urn TEXT NOT NULL COLLATE NOCASE,
+	download_count INTEGER NOT NULL DEFAULT 0,
+	view_count INTEGER NOT NULL DEFAULT 0,
+	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER DEFAULT NULL,
+	
+	CONSTRAINT fk_resource_meta
+		FOREIGN KEY ( resource_id )
+		REFERENCES resources ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_resource_status
+		FOREIGN KEY ( status ) 
+		REFERENCES statuses ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE UNIQUE INDEX idx_resource_meta ON resource_meta( resource_id );-- --
+CREATE UNIQUE INDEX idx_resource_urn ON resource_meta ( urn );-- --
+
+CREATE TRIGGER resource_insert AFTER INSERT ON resources FOR EACH ROW
+BEGIN
+	INSERT INTO resource_meta( resource_id, urn ) 
+		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
+END;-- --
+
+CREATE TRIGGER resource_update AFTER UPDATE ON places FOR EACH ROW
+BEGIN
+	UPDATE resource_meta SET updated = CURRENT_TIMESTAMP 
+		WHERE resource_id = NEW.id;
+END;-- --
+
+
+CREATE TABLE resource_labels(
+	resource_id INTEGER INTEGER NOT NULL,
+	filename TEXT NOT NULL COLLATE NOCASE,
+	title TEXT DEFAULT NULL COLLATE NOCASE,
+	description TEXT DEFAULT NULL COLLATE NOCASE,
+	language_id INTEGER DEFAULT NULL,
+	
+	CONSTRAINT fk_lang_resource
+		FOREIGN KEY ( resource_id ) 
+		REFERENCES resources ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_resource_lang
+		FOREIGN KEY ( language_id ) 
+		REFERENCES languages ( id )
+		ON DELETE SET NULL
+);-- --
+CREATE UNIQUE INDEX idx_resource_label ON resource_labels ( resource_id, filename );-- --
+CREATE INDEX idx_resource_name ON resource_labels( filename );-- --
+CREATE INDEX idx_resource_label_lang ON resource_labels ( language_id ) 
+	WHERE language_id IS NOT NULL;-- --
+
+CREATE VIRTUAL TABLE resource_search USING fts4( body, tokenize=unicode61 );-- --
+
+
+-- Attachments
+CREATE TABLE entry_resources(
+	entry_id INTEGER NOT NULL,
+	resource_id INTEGER NOT NULL,
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	
+	CONSTRAINT fk_resource_entry
+		FOREIGN KEY ( entry_id ) 
+		REFERENCES entries ( id )
+		ON DELETE CASCADE,
+	
+	CONSTRAINT fk_entry_resource
+		FOREIGN KEY ( resource_id ) 
+		REFERENCES resources ( id )
+		ON DELETE CASCADE
+);-- --
+CREATE UNIQUE INDEX idx_entry_resource ON 
+	entry_resources( entry_id, resource_id );-- --
+CREATE INDEX idx_entry_resource_sort ON 
+	entry_resources( sort_order );-- --
+
+
+
+-- Indexed text
+CREATE TABLE phrases (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	entered TEXT NOT NULL COLLATE NOCASE
+);-- --
+
+CREATE TABLE phrase_meta (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	phrase_id INTEGER NOT NULL,
+	metaphones TEXT DEFAULT NULL COLLATE NOCASE,
+	q_factor REAL DEFAULT NULL,
+	
+	CONSTRAINT fk_phrase_meta
+		FOREIGN KEY ( phrase_id ) 
+		REFERENCES phrases ( id )
+		ON DELETE CASCADE
+);-- --
+CREATE UNIQUE INDEX idx_phrase_meta ON phrase_meta ( phrase_id );-- --
+CREATE INDEX idx_phrase_q ON phrase_meta ( q_factor ) 
+	WHERE q_factor IS NOT NULL;-- --
+
+-- Text similarity searching
+CREATE VIRTUAL TABLE phrase_search USING fts4( body, tokenize=unicode61 );-- --
 
 
 
