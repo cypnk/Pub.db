@@ -2412,11 +2412,11 @@ CREATE TABLE resources(
 	src TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Size in bytes
-	filesize INTEGER NOT NULL DEFAULT 0,
+	content_length INTEGER NOT NULL DEFAULT 0,
 	
 	-- SHA256 etc...
 	hash_algo TEXT NOT NULL COLLATE NOCASE,
-	file_hash TEXT NOT NULL COLLATE NOCASE,
+	content_hash TEXT NOT NULL COLLATE NOCASE,
 	
 	-- image/jpeg, video/ogg etc...
 	mime_type TEXT NOT NULL COLLATE NOCASE,
@@ -2424,8 +2424,8 @@ CREATE TABLE resources(
 );-- --
 CREATE UNIQUE INDEX idx_resource_src ON resources( src );-- --
 CREATE INDEX idx_resource_mime ON resources( mime_type );-- --
-CREATE INDEX idx_resource_hash ON resources( file_hash );-- --
-CREATE INDEX idx_resource_size ON resources( filesize );-- --
+CREATE INDEX idx_resource_hash ON resources( content_hash );-- --
+CREATE INDEX idx_resource_length ON resources( content_length );-- --
 
 CREATE TABLE resource_meta (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -2465,7 +2465,9 @@ END;-- --
 
 CREATE TABLE resource_labels(
 	resource_id INTEGER INTEGER NOT NULL,
-	filename TEXT NOT NULL COLLATE NOCASE,
+	
+	-- Alternate disk path reference
+	label_src TEXT DEFAULT NULL COLLATE NOCASE,
 	title TEXT DEFAULT NULL COLLATE NOCASE,
 	description TEXT DEFAULT NULL COLLATE NOCASE,
 	language_id INTEGER DEFAULT NULL,
@@ -2480,8 +2482,9 @@ CREATE TABLE resource_labels(
 		REFERENCES languages ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_resource_label ON resource_labels ( resource_id, filename );-- --
-CREATE INDEX idx_resource_name ON resource_labels( filename );-- --
+CREATE UNIQUE INDEX idx_resource_label ON resource_labels ( resource_id, label_src )
+	WHERE label_src IS NOT NULL;-- --
+CREATE INDEX idx_resource_name ON resource_labels( label_src );-- --
 CREATE INDEX idx_resource_label_lang ON resource_labels ( language_id ) 
 	WHERE language_id IS NOT NULL;-- --
 
