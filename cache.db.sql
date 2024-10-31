@@ -8,12 +8,16 @@ CREATE TABLE caches (
 	cache_id TEXT NOT NULL COLLATE NOCASE, 
 	ttl INTEGER NOT NULL, 
 	content TEXT NOT NULL COLLATE NOCASE, 
+	
+	-- Content is a location on disk if 1, defaults to 0
+	is_src INTEGER NOT NULL DEFAULT 0, 
 	expires DATETIME DEFAULT NULL,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );-- --
 CREATE UNIQUE INDEX idx_caches ON caches ( basename, cache_id );-- --
 CREATE INDEX idx_cache_site ON caches ( basename );-- --
+CREATE INDEX idx_cache_is_src ON caches ( is_src );-- --
 CREATE INDEX idx_caches_on_expires ON caches ( expires DESC )
 	WHERE expires IS NOT NULL;-- --
 CREATE INDEX idx_caches_on_created ON caches ( created ASC );-- --
