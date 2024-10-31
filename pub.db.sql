@@ -48,142 +48,6 @@ CREATE INDEX idx_status_weight ON statuses ( status, weight );-- --
 
 
 
--- Activity history
-CREATE TABLE event_logs (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
-	
-	-- Serialized JSON
-	content TEXT NOT NULL DEFAULT 
-		'{ "label" : "", "body" : "" }' COLLATE NOCASE, 
-	
-	-- Log type
-	label TEXT GENERATED ALWAYS AS ( 
-		COALESCE( json_extract( content, '$.label' ), '' )
-	) STORED NOT NULL,
-	
-	-- Main payload
-	body TEXT GENERATED ALWAYS AS ( 
-		COALESCE( json_extract( content, '$.body' ), '' )
-	) STORED NOT NULL,
-	
-	-- Logs are not updated
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	expires DATETIME DEFAULT NULL
-);-- --
-CREATE INDEX idx_log_label ON event_logs ( label );-- --
-CREATE INDEX idx_log_created ON event_logs ( created );-- --
-CREATE INDEX idx_log_expires ON event_logs ( expires )
-	WHERE expires IS NOT NULL;-- --
-
--- Internal application logs
-CREATE TABLE app_logs(
-	log_id INTEGER NOT NULL,
-	
-	-- Error/notice/warning code
-	code INTEGER NOT NULL,
-	
-	-- Line in file
-	line INTEGER NOT NULL,
-	
-	-- File or class name
-	origin TEXT NOT NULL COLLATE NOCASE,
-	
-	CONSTRAINT fk_app_log
-		FOREIGN KEY ( log_id ) 
-		REFERENCES event_logs ( id )
-		ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX idx_app_log ON app_logs ( log_id );-- --
-CREATE INDEX idx_log_code ON app_logs ( code );-- --
-CREATE INDEX idx_log_line ON app_logs ( line );-- --
-CREATE INDEX idx_log_origin ON app_logs ( origin )
-	WHERE origin IS NOT '';-- --
-
--- Client HTTP request data
-CREATE TABLE web_logs(
-	log_id INTEGER NOT NULL,
-	
-	-- Domain/host
-	realm TEXT NOT NULL COLLATE NOCASE,
-	
-	-- Client connection address
-	ip TEXT NOT NULL COLLATE NOCASE,
-	
-	-- GET, HEAD, POST etc...
-	method TEXT NOT NULL COLLATE NOCASE,
-	
-	-- Request path
-	uri TEXT NOT NULL COLLATE NOCASE,
-	
-	-- Client browser info
-	user_agent TEXT DEFAULT NULL COLLATE NOCASE,
-	
-	-- Sub URI parameters
-	query_string TEXT NOT NULL COLLATE NOCASE,
-	
-	-- Client's preferred language by browser details
-	language TEXT DEFAULT NULL COLLATE NOCASE,
-	
-	-- HTTP response code
-	response INTEGER NOT NULL,
-	
-	CONSTRAINT fk_web_log
-		FOREIGN KEY ( log_id ) 
-		REFERENCES event_logs ( id )
-		ON DELETE CASCADE
-);-- --
-CREATE UNIQUE INDEX idx_web_log ON web_logs ( log_id );-- --
-CREATE INDEX idx_log_realm ON web_logs ( realm );-- --
-CREATE INDEX idx_log_ip ON web_logs ( ip );-- --
-CREATE INDEX idx_log_method ON web_logs ( method );-- --
-CREATE INDEX idx_log_uri ON web_logs ( uri )
-	WHERE uri IS NOT '';-- --
-CREATE INDEX idx_log_ua ON web_logs ( user_agent );-- --
-CREATE INDEX idx_log_qs ON web_logs ( query_string )
-	WHERE query_string IS NOT '';-- --
-CREATE INDEX idx_log_lang ON web_logs ( language )
-	WHERE language IS NOT NULL;-- --
-CREATE INDEX idx_log_response ON web_logs ( response );-- --
-
-CREATE TRIGGER app_error_insert AFTER INSERT ON event_logs FOR EACH ROW
-WHEN NEW.label = 'error' OR NEW.label = 'notice' OR NEW.label = 'warning'
-BEGIN
-	INSERT INTO app_logs(
-		log_id, code, line, origin
-	) VALUES (
-		NEW.id,
-		CAST( COALESCE( json_extract( NEW.content, '$.code' ), 0 ) AS INTEGER ),
-		CAST( COALESCE( json_extract( NEW.content, '$.line' ), 0 ) AS INTEGER ),
-		COALESCE( json_extract( NEW.content, '$.origin' ), '' )
-	);
-END;-- --
-
-CREATE TRIGGER web_request_insert AFTER INSERT ON event_logs FOR EACH ROW
-WHEN NEW.label = 'request'
-BEGIN
-	INSERT INTO web_logs( 
-		log_id, realm, ip, method, uri, user_agent, 
-		query_string, language, response
-	) VALUES (
-		NEW.id,
-		COALESCE( json_extract( NEW.content, '$.realm' ), 'unknown' ),
-		COALESCE( json_extract( NEW.content, '$.ip' ), 'unknown' ),
-		COALESCE( json_extract( NEW.content, '$.method' ), 'unknown' ),
-		COALESCE( json_extract( NEW.content, '$.uri' ), '' ),
-		COALESCE( json_extract( NEW.content, '$.user_agent' ), 'unknown' ),
-		COALESCE( json_extract( NEW.content, '$.query_string' ), '' ),
-		COALESCE( json_extract( NEW.content, '$.language' ), NULL ),
-		CAST( COALESCE( json_extract( NEW.content, '$.response' ), 520 ) AS INTEGER )
-	);
-END;-- --
-
-
--- Log body searching
-CREATE VIRTUAL TABLE log_search 
-	USING fts4( body, tokenize=unicode61 );-- --
-
-
-
 
 
 -- List of languages
@@ -532,94 +396,6 @@ CREATE VIEW sites_enabled AS SELECT
 
 
 
--- Sessions based on currently visiting site
-CREATE TABLE sessions(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	site_id INTEGER NOT NULL,
-	session_id TEXT DEFAULT NULL COLLATE NOCASE,
-	session_data TEXT DEFAULT NULL COLLATE NOCASE,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	expires DATETIME NOT NULL,
-	
-	CONSTRAINT fk_session_site 
-		FOREIGN KEY ( site_id )
-		REFERENCES sites( id ) 
-		ON DELETE CASCADE
-);-- --
-CREATE UNIQUE INDEX idx_session_id ON sessions( session_id );-- --
-CREATE INDEX idx_session_site ON sessions( site_id );-- --
-CREATE INDEX idx_session_created ON sessions ( created ASC );-- --
-CREATE INDEX idx_session_expires ON sessions ( expires ASC );-- --
-
-CREATE TRIGGER session_update AFTER UPDATE ON sessions
-BEGIN
-	UPDATE sessions SET updated = CURRENT_TIMESTAMP 
-		WHERE id = NEW.id;
-END;-- --
-
--- Site specific cached content
-CREATE TABLE caches (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
-	site_id INTEGER NOT NULL,
-	
-	-- Cache identifier, unique per site
-	cache_id TEXT NOT NULL COLLATE NOCASE, 
-	ttl INTEGER NOT NULL, 
-	content TEXT NOT NULL COLLATE NOCASE, 
-	expires DATETIME DEFAULT NULL,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	
-	CONSTRAINT fk_cache_site 
-		FOREIGN KEY ( site_id )
-		REFERENCES sites( id ) 
-		ON DELETE CASCADE
-);-- --
-CREATE UNIQUE INDEX idx_caches ON caches ( site_id, cache_id );-- --
-CREATE INDEX idx_cache_site ON caches ( site_id );-- --
-CREATE INDEX idx_caches_on_expires ON caches ( expires DESC )
-	WHERE expires IS NOT NULL;-- --
-CREATE INDEX idx_caches_on_created ON caches ( created ASC );-- --
-CREATE INDEX idx_caches_on_updated ON caches ( updated );-- --
-
-CREATE TRIGGER cache_after_insert AFTER INSERT ON caches FOR EACH ROW 
-BEGIN
-	-- Generate expiration
-	UPDATE caches SET 
-		expires = datetime( 
-			( strftime( '%s','now' ) + NEW.ttl ), 
-			'unixepoch' 
-		) WHERE rowid = NEW.rowid;
-	
-	-- Clear expired data
-	DELETE FROM caches WHERE 
-		strftime( '%s', expires ) < 
-		strftime( '%s', updated ) AND expires IS NOT NULL;
-END;-- --
-
--- Change only update period when TTL is empty
-CREATE TRIGGER cache_after_update AFTER UPDATE ON caches FOR EACH ROW 
-WHEN NEW.updated < OLD.updated AND NEW.ttl = 0
-BEGIN
-	UPDATE caches SET updated = CURRENT_TIMESTAMP 
-		WHERE rowid = NEW.rowid;
-END;-- --
-
--- Change expiration period when TTL exists
-CREATE TRIGGER cache_after_update_ttl AFTER UPDATE ON caches FOR EACH ROW 
-WHEN NEW.updated < OLD.updated AND NEW.ttl <> 0
-BEGIN
-	-- Change expiration
-	UPDATE caches SET updated = CURRENT_TIMESTAMP, 
-		expires = datetime( 
-			( strftime( '%s','now' ) + NEW.ttl ), 
-			'unixepoch' 
-		) WHERE rowid = NEW.rowid;
-END;-- --
-
-
-
-
 -- Users access
 CREATE TABLE users (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -935,6 +711,7 @@ CREATE TABLE user_auth(
 	last_login DATETIME DEFAULT NULL,
 	last_pass_change DATETIME DEFAULT NULL,
 	last_lockout DATETIME DEFAULT NULL,
+	last_session_base TEXT DEFAULT NULL,
 	last_session_id TEXT DEFAULT NULL,
 	
 	-- Auth status,
@@ -952,11 +729,6 @@ CREATE TABLE user_auth(
 	-- Per auth settings
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
-	
-	CONSTRAINT fk_auth_session 
-		FOREIGN KEY ( last_session_id )
-		REFERENCES sessions( session_id )
-		ON DELETE SET NULL,
 	
 	CONSTRAINT fk_auth_user 
 		FOREIGN KEY ( user_id ) 
@@ -988,6 +760,8 @@ CREATE INDEX idx_user_active ON user_auth( last_active )
 	WHERE last_active IS NOT NULL;-- --
 CREATE INDEX idx_user_login ON user_auth( last_login )
 	WHERE last_login IS NOT NULL;-- --
+CREATE INDEX idx_user_session ON user_auth( last_session_base )
+	WHERE last_session_base IS NOT NULL;-- --
 CREATE INDEX idx_user_session ON user_auth( last_session_id )
 	WHERE last_session_id IS NOT NULL;-- --
 CREATE INDEX idx_user_auth_approved ON user_auth( is_approved );-- --
@@ -1016,6 +790,7 @@ SELECT user_id,
 	last_login,
 	last_lockout,
 	last_pass_change,
+	last_session_base,
 	last_session_id,
 	failed_attempts,
 	failed_last_start,
@@ -1031,6 +806,7 @@ BEGIN
 	UPDATE user_auth SET 
 		last_ip			= NEW.last_ip,
 		last_ua			= NEW.last_ua,
+		last_session_base	= NEW.last_session_base,
 		last_session_id		= NEW.last_session_id,
 		last_login		= CURRENT_TIMESTAMP, 
 		last_active		= CURRENT_TIMESTAMP,
@@ -1044,6 +820,7 @@ BEGIN
 	UPDATE user_auth SET 
 		last_ip			= NEW.last_ip, 
 		last_ua			= NEW.last_ua,
+		last_session_base	= NEW.last_session_base,
 		last_session_id		= NEW.last_session_id,
 		last_active		= CURRENT_TIMESTAMP 
 		WHERE id = OLD.id;
@@ -1072,6 +849,7 @@ BEGIN
 	UPDATE user_auth SET 
 		last_ip			= NEW.last_ip, 
 		last_ua			= NEW.last_ua,
+		last_session_base	= NEW.last_session_base,
 		last_session_id		= NEW.last_session_id,
 		last_active		= CURRENT_TIMESTAMP,
 		failed_last_attempt	= CURRENT_TIMESTAMP, 
