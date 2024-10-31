@@ -1,15 +1,10 @@
 
--- GUID/UUID generator helper
+
+-- Generate a random unique string
 -- Usage:
--- SELECT id FROM uuid;
-CREATE VIEW uuid AS SELECT lower(
-	hex( randomblob( 4 ) ) || '-' || 
-	hex( randomblob( 2 ) ) || '-' || 
-	'4' || substr( hex( randomblob( 2 ) ), 2 ) || '-' || 
-	substr( 'AB89', 1 + ( abs( random() ) % 4 ) , 1 )  ||
-	substr( hex( randomblob( 2 ) ), 2 ) || '-' || 
-	hex( randomblob( 6 ) )
-) AS id;-- --
+-- SELECT id FROM rnd;
+CREATE VIEW rnd AS 
+SELECT lower( hex( randomblob( 16 ) ) ) AS id;-- --
 
 -- Sessions based on currently visiting site
 CREATE TABLE sessions(
@@ -28,7 +23,7 @@ CREATE INDEX idx_session_expires ON sessions ( expires ASC );-- --
 CREATE TRIGGER session_id_insert AFTER INSERT ON sessions FOR EACH ROW
 WHEN NEW.session_id IS NULL
 BEGIN
-	UPDATE sessions SET session_id = ( SELECT id FROM uuid )
+	UPDATE sessions SET session_id = ( SELECT id FROM rnd )
 		WHERE id = NEW.id;
 END;-- --
 
