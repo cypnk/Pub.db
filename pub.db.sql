@@ -760,7 +760,7 @@ CREATE INDEX idx_user_active ON user_auth( last_active )
 	WHERE last_active IS NOT NULL;-- --
 CREATE INDEX idx_user_login ON user_auth( last_login )
 	WHERE last_login IS NOT NULL;-- --
-CREATE INDEX idx_user_session ON user_auth( last_session_base )
+CREATE INDEX idx_user_session_base ON user_auth( last_session_base )
 	WHERE last_session_base IS NOT NULL;-- --
 CREATE INDEX idx_user_session ON user_auth( last_session_id )
 	WHERE last_session_id IS NOT NULL;-- --
