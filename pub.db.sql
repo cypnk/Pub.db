@@ -2324,13 +2324,17 @@ CREATE TABLE templates(
 	parent_id INTEGER DEFAULT NULL REFERENCES templates( id ) 
 		ON DELETE CASCADE,
 	
-	-- External template
-	url TEXT DEFAULT NULL,
+	-- File-based templates
+	create_src TEXT DEFAULT NULL,
+	edit_src TEXT DEFAULT NULL,
+	view_src TEXT DEFAULT NULL,
+	delete_src TEXT DEFAULT NULL,
 	
-	-- HTML
-	create_template TEXT NOT NULL COLLATE NOCASE, 
-	edit_template TEXT NOT NULL COLLATE NOCASE, 
-	view_template TEXT NOT NULL COLLATE NOCASE,
+	-- Stored HTML
+	create_template TEXT DEFAULT NULL COLLATE NOCASE, 
+	edit_template TEXT DEFAULT NULL COLLATE NOCASE, 
+	view_template TEXT DEFAULT NULL COLLATE NOCASE, 
+	delete_template TEXT DEFAULT NULL COLLATE NOCASE,
 	
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
@@ -2342,8 +2346,14 @@ CREATE TABLE templates(
 );-- --
 CREATE INDEX idx_template_parent ON templates ( parent_id )
 	WHERE parent_id IS NOT NULL;-- --
-CREATE UNIQUE INDEX idx_template_url ON templates ( url )
-	WHERE url IS NOT NULL;-- --
+CREATE INDEX idx_template_create ON templates ( create_src )
+	WHERE create_src IS NOT NULL;-- --
+CREATE INDEX idx_template_update ON templates ( update_src )
+	WHERE update_src IS NOT NULL;-- --
+CREATE INDEX idx_template_view ON templates ( view_src )
+	WHERE view_src IS NOT NULL;-- --
+CREATE INDEX idx_template_delete ON templates ( delete_src )
+	WHERE delete_src IS NOT NULL;-- --
 CREATE INDEX idx_template_settings ON templates ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
@@ -2389,7 +2399,13 @@ CREATE INDEX idx_template_desc ON template_desc ( template_id );-- --
 CREATE INDEX idx_template_title ON template_desc ( title );-- --
 CREATE INDEX idx_template_lang ON template_desc ( language_id );-- --
 
-CREATE TRIGGER template_after_update AFTER UPDATE ON templates FOR EACH ROW 
+CREATE TRIGGER template_insert AFTER INSERT ON templates FOR EACH ROW 
+BEGIN
+	INSERT INTO template_meta( template_id ) 
+		VALUES ( NEW.id );
+END;-- --
+
+CREATE TRIGGER template_update AFTER UPDATE ON templates FOR EACH ROW 
 BEGIN
 	UPDATE template_meta SET updated = CURRENT_TIMESTAMP 
 		WHERE template_id = NEW.id;
