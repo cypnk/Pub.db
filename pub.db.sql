@@ -2456,72 +2456,68 @@ CREATE VIEW service_view AS SELECT
 	
 	-- Site workspaces
 	'{ "workspaces" : [ ' || 
-	GROUP_CONCAT( '{ ' || 
+	GROUP_CONCAT(
+		'{ '			|| 
 		'"id":'			|| workspaces.id		|| ',' ||
-		'"urn":'		|| workspace_meta.urn		|| ',' ||
+		'"urn":"'		|| workspace_meta.urn		|| '",' ||
 		'"setting_id":'		|| workspaces.setting_id	|| ',' ||
 		'"settings_override":'	|| workspaces.settings_override	|| ',' ||
 		'"created":"'		|| workspace_meta.created	|| '",' ||
 		'"updated":"'		|| workspace_meta.updated	|| '",' ||
 		'"status":'		|| COALESCE( workspace_meta.status, 0 ) ||
 		
-		-- Site collections 
-		'"collections" : [ ' || ( 
-			SELECT 
-			GROUP_CONCAT( '{ ' || 
-				'"id":'			|| collections.id		|| ',' || 
-				'"workspace_id":'	|| collections.workspace_id	|| ',' ||
-				'"urn":"'		|| collection_meta.urn		|| '",' || 
-				'"entry_count":'	|| collection_meta.entry_count	|| ',' ||  
-				'"category_count":'	|| collection_meta.category_count|| ',' ||
-				'"created":"'		|| collection_meta.created	|| '",' ||
-				'"updated":"'		|| collection_meta.updated	|| '",' ||	
-				'"status":'		|| COALESCE( collection_meta.status, 0 ) ||
-				
-				-- Collection accept types
-				'"accept" : [ ' || ( 
-					SELECT 
-					GROUP_CONCAT( '{ ' || 
-						'"id":'		|| accept.id		|| ',' || 
-						'"mime_type":"'	|| accept.mime_type	|| '"}' 
-					) AS collaccept  
-					FROM accept WHERE accept.collection_id = collections.id
-				) || ' ], ' || 
-				
-				-- Collection categories
-				'"categories" : [ ' || (
-					SELECT 
-					GROUP_CONCAT( '{ ' || 
-						'"id":'		|| categories.id		|| ',' ||
+		-- Site collections
+		'"collections" : [ ' || IFNULL(
+			( SELECT 
+				GROUP_CONCAT( '{ '		|| 
+					'"id":'			|| collections.id			|| ',' || 
+					'"workspace_id":'	|| collections.workspace_id		|| ',' ||
+					'"urn":"'		|| collection_meta.urn			|| '",' || 
+					'"entry_count":'	|| collection_meta.entry_count		|| ',' ||  
+					'"category_count":'	|| collection_meta.category_count	|| ',' ||
+					'"created":"'		|| collection_meta.created		|| '",' ||
+					'"updated":"'		|| collection_meta.updated		|| '",' ||    
+					'"status":'		|| COALESCE( collection_meta.status, 0 ) || ',' ||
+					
+					-- Collection accept types
+					'"accept" : [ ' || IFNULL(
+						( SELECT 
+							GROUP_CONCAT( '{ '	|| 
+								'"id":'		|| accept.id		|| ',' || 
+								'"mime_type":"'	|| accept.mime_type	|| '"}', ',' ) 
+						FROM accept WHERE accept.collection_id = collections.id )
+						, '' ) || ' ], ' ||
 						
-						-- Needed for breadcrumbs
-						'"parent_id":'	|| COALESCE( categories.parent_id, 0 )	|| ',' ||
-						
-						'"urn":'	|| category_meta.urn		|| '",' || 
-						'"created":"'	|| category_meta.created	|| '",' ||
-						'"updated":"'	|| category_meta.updated	|| '",' ||
-						'"sort_order":'	|| category_meta.sort_order	|| ',' ||  		
-						'"status":'	|| COALESCE( category_meta.status, 0 ) || '}'
-					) AS cats 
-					FROM categories 
-					LEFT JOIN category_meta ON categories.id = category_meta.category_id 
-					LEFT JOIN category_collections ON categories.id = category_collections.category_id
-					WHERE category_collections.collection_id = collections.id 
-				) || '] }' 
-			) AS colls
+					-- Collection categories
+					'"categories" : [ ' || IFNULL(
+						( SELECT 
+							GROUP_CONCAT( '{ '	|| 
+								'"id":'		|| categories.id			|| ',' ||
+								'"parent_id":'	|| COALESCE( categories.parent_id, 0 )	|| ',' ||
+								'"urn":"'	|| COALESCE( category_meta.urn, '' )	|| '",' || 
+								'"created":"'	|| category_meta.created		|| '",' ||
+								'"updated":"'	|| category_meta.updated		|| '",' ||
+								'"sort_order":'	|| category_meta.sort_order		|| ',' ||   
+								'"status":'	|| COALESCE( category_meta.status, 0 )	|| '}', ',' ) 
+						FROM categories 
+						LEFT JOIN category_meta ON categories.id = category_meta.category_id 
+						LEFT JOIN category_collections ON categories.id = category_collections.category_id
+						WHERE category_collections.collection_id = collections.id ), '' ) || ' ] }' 
+				, ',' ) AS colls 
 			FROM collections 
 			LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id
 			WHERE workspaces.id = collections.workspace_id 
-		) || ' ] }' 
+		 ), '' ) || ' ] }', ',' 
 	) || ' ] }' AS wkspaces
 	
-	FROM sites
-	INNER JOIN site_workspaces ON 
-		sites.id = site_workspaces.site_id
-	LEFT JOIN settings ON sites.setting_id = settings.id
-	LEFT JOIN workspaces ON 
-		site_workspaces.workspace_id = workspaces.id
-	LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.workspace_id;-- --
+FROM sites
+INNER JOIN site_workspaces ON 
+	sites.id = site_workspaces.site_id
+LEFT JOIN settings ON sites.setting_id = settings.id
+LEFT JOIN workspaces ON 
+	site_workspaces.workspace_id = workspaces.id
+LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.workspace_id;
+-- --
 
 -- Collection
 -- Usage:
@@ -2543,37 +2539,40 @@ CREATE VIEW collection_view AS SELECT
 	workspaces.id AS workspace_id,
 	
 	-- Collection accept types
-	'{ "accept" : [ ' || 
-	GROUP_CONCAT( '{ ' || 
-		'"id":'			|| accept.id			|| ',' || 
-		'"mime_type":"'		|| accept.mime_type		|| '",' || 
-		'"collection_id":'	|| accept.collection_id		||
-	' }' ) || ' ] }' AS collaccept,
+	'{ "accept" : [ ' || IFNULL(
+		GROUP_CONCAT( '{ '		|| 
+			'"id":'			|| accept.id				|| ',' || 
+			'"mime_type":"'		|| accept.mime_type			|| '",' || 
+			'"collection_id":'	|| accept.collection_id			|| 
+		' }', ',' ), '' ) 
+	|| ' ] }' AS collaccept,
 	
 	-- Collection categories
-	'{ "categories" : [ ' || 
-	GROUP_CONCAT( '{ ' || 
-		'"id":'			|| categories.id		|| ',' || 
-		'"parent_id":'		|| COALESCE( categories.parent_id, 0 )	|| ',' ||
-		'"collection_id"'	|| category_collections.collection_id	|| ',' ||
-		'"urn":'		|| category_meta.urn		|| '",' || 
-		'"created":"'		|| category_meta.created	|| '",' ||
-		'"updated":"'		|| category_meta.updated	|| '",' ||
-		'"sort_order":'		|| category_meta.sort_order	|| ',' ||  		
-		'"status":'		|| COALESCE( category_meta.status, 0 ) ||
-	' }' ) || ' ] }' AS cats
-		
-	FROM collections
-	INNER JOIN site_workspaces ON 
-		collections.workspace_id = site_workspaces.workspace_id
-	INNER JOIN sites ON site_workspaces.site_id = sites.id
-	LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id 
-	LEFT JOIN settings s ON sites.setting_id = s.id
-	LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id
-	LEFT JOIN category_collections ON collections.id = category_collections.collection_id
-	LEFT JOIN categories ON category_collections.category_id = categories.id
-	LEFT JOIN category_meta ON categories.id = category_meta.category_id
-	LEFT JOIN accept ON collections.id = accept.collection_id;-- --
+	'{ "categories" : [ ' || IFNULL(
+		GROUP_CONCAT( '{ '		|| 
+			'"id":'			|| categories.id			|| ',' || 
+			'"parent_id":'		|| COALESCE( categories.parent_id, 0 )	|| ',' ||
+			'"collection_id":'	|| category_collections.collection_id	|| ',' ||
+			'"urn":"'		|| COALESCE( category_meta.urn, '' )	|| '",' || 
+			'"created":"'		|| category_meta.created		|| '",' ||
+			'"updated":"'		|| category_meta.updated		|| '",' ||
+			'"sort_order":'		|| category_meta.sort_order		|| ',' ||  		
+			'"status":'		|| COALESCE( category_meta.status, 0 )	||
+		' }', ',' ), '' ) 
+	|| ' ] }' AS cats
+	
+FROM collections
+INNER JOIN site_workspaces ON 
+	collections.workspace_id = site_workspaces.workspace_id
+INNER JOIN sites ON site_workspaces.site_id = sites.id
+LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id 
+LEFT JOIN settings s ON sites.setting_id = s.id
+LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id
+LEFT JOIN category_collections ON collections.id = category_collections.collection_id
+LEFT JOIN categories ON category_collections.category_id = categories.id
+LEFT JOIN category_meta ON categories.id = category_meta.category_id
+LEFT JOIN accept ON collections.id = accept.collection_id;
+-- --
 
 
 
