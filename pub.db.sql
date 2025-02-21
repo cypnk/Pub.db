@@ -38,7 +38,8 @@ CREATE UNIQUE INDEX idx_settings_label ON settings( label );-- --
 CREATE TABLE statuses(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 	label TEXT NOT NULL COLLATE NOCASE,
-	is_unique INTEGER NOT NULL DEFAULT 0,
+	is_unique INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_unique IN ( 0, 1 ) ),
 	weight INTEGER NOT NULL DEFAULT 0,
 	status INTEGER NOT NULL DEFAULT 0
 );-- --
@@ -84,7 +85,8 @@ CREATE TABLE lang_meta(
 	language_id INTEGER NOT NULL,
 	
 	-- Default interface language
-	is_default INTEGER NOT NULL DEFAULT 0,
+	is_default INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_default IN ( 0, 1 ) ),
 	sort_order INTEGER NOT NULL DEFAULT 0,
 	status INTEGER DEFAULT NULL,
 	
@@ -196,7 +198,8 @@ CREATE TABLE translations (
 	definitions TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	-- Default locale for the language
-	is_default INTEGER NOT NULL DEFAULT 0,
+	is_default INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_default IN ( 0, 1 ) ),
 	
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
@@ -283,13 +286,15 @@ CREATE TABLE sites(
 	title TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Domain name
-	basename TEXT NOT NULL COLLATE NOCASE,
+	basename TEXT NOT NULL DEFAULT 'localhost' COLLATE NOCASE,
 	
 	-- Relative path
-	basepath TEXT NOT NULL COLLATE NOCASE, 
+	basepath TEXT NOT NULL DEFAULT '/' COLLATE NOCASE,
 	
-	is_active INTEGER NOT NULL DEFAULT 1,
-	is_maintenance INTEGER NOT NULL DEFAULT 0,
+	is_active INTEGER NOT NULL DEFAULT 1
+		CHECK ( is_active IN ( 0, 1 ) ),
+	is_maintenance INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_maintenance IN ( 0, 1 ) ),
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
@@ -303,6 +308,7 @@ CREATE UNIQUE INDEX idx_site_title ON sites ( title );-- --
 CREATE UNIQUE INDEX idx_site_uri ON sites ( basename, basepath );-- --
 CREATE INDEX idx_site_basename ON sites ( basename );-- --
 CREATE INDEX idx_site_basepath ON sites( basepath );-- --
+CREATE INDEX idx_site_active ON sites( is_active );-- --
 CREATE INDEX idx_site_settings ON sites ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
@@ -715,8 +721,10 @@ CREATE TABLE user_auth(
 	last_session_id TEXT DEFAULT NULL,
 	
 	-- Auth status,
-	is_approved INTEGER NOT NULL DEFAULT 0,
-	is_locked INTEGER NOT NULL DEFAULT 0,
+	is_approved INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_approved IN ( 0, 1 ) ),
+	is_locked INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_locked IN ( 0, 1 ) ),
 	
 	-- Authentication tries
 	failed_attempts INTEGER NOT NULL DEFAULT 0,
@@ -1493,7 +1501,8 @@ CREATE TABLE entries (
 	type_id INTEGER NOT NULL,
 	
 	-- If true, don't publish regardless of pub date
-	is_draft INTEGER NOT NULL DEFAULT 0,
+	is_draft INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_draft IN ( 0, 1 ) ),
 	
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
@@ -2348,8 +2357,8 @@ CREATE INDEX idx_template_parent ON templates ( parent_id )
 	WHERE parent_id IS NOT NULL;-- --
 CREATE INDEX idx_template_create ON templates ( create_src )
 	WHERE create_src IS NOT NULL;-- --
-CREATE INDEX idx_template_update ON templates ( update_src )
-	WHERE update_src IS NOT NULL;-- --
+CREATE INDEX idx_template_update ON templates ( edit_src )
+	WHERE edit_src IS NOT NULL;-- --
 CREATE INDEX idx_template_view ON templates ( view_src )
 	WHERE view_src IS NOT NULL;-- --
 CREATE INDEX idx_template_delete ON templates ( delete_src )
