@@ -25,9 +25,9 @@ CREATE VIEW uuid AS SELECT lower(
 CREATE TABLE versions (
 	version_id INTEGER PRIMARY KEY AUTOINCREMENT,
 	installed TEXT NOT NULL,
-	installed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	created DATETIME DEFAULT CURRENT_TIMESTAMP
 );-- --
-CREATE UNIQUE INDEX idx_versions_installed ON versions ( installed );-- --
+CREATE UNIQUE INDEX idx_versions_installed ON versions ( created );-- --
 
 
 -- Core information
