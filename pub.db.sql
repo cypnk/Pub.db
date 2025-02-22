@@ -21,6 +21,13 @@ CREATE VIEW uuid AS SELECT lower(
 ) AS id;-- --
 
 
+-- Update/upgrade tracking
+CREATE TABLE versions (
+	version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+	installed TEXT NOT NULL,
+	installed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);-- --
+CREATE UNIQUE INDEX idx_versions_installed ON versions ( installed );-- --
 
 
 -- Core information
@@ -452,6 +459,21 @@ CREATE INDEX idx_user_updated ON user_meta ( updated );-- --
 CREATE INDEX idx_user_status ON user_meta ( status )
 	WHERE status IS NOT NULL;-- --
 
+-- Custom user data
+CREATE TABLE user_fields (
+	user_id INTEGER NOT NULL,
+	field_name TEXT NOT NULL,
+	field_value TEXT NOT NULL,
+	
+	PRIMARY KEY ( user_id, field_name ),
+	CONSTRAINT fk_field_user 
+		FOREIGN KEY ( user_id ) 
+		REFERENCES users ( user_id ) 
+		ON DELETE CASCADE
+);-- --
+CREATE INDEX idx_user_field_user ON user_fields ( user_id );-- --
+CREATE INDEX idx_user_field_name ON user_fields ( field_name );-- --
+
 -- User search
 CREATE VIRTUAL TABLE user_search 
 	USING fts4( username, tokenize=unicode61 );-- --
@@ -644,9 +666,11 @@ CREATE TABLE user_roles(
 	role_id INTEGER NOT NULL REFERENCES roles ( id ) 
 		ON DELETE CASCADE,
 	user_id INTEGER NOT NULL REFERENCES users ( id ) 
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+	created DATETIME DEFAULT CURRENT_TIMESTAMP
 );-- --
 CREATE UNIQUE INDEX idx_user_roles ON user_roles ( role_id, user_id );-- --
+CREATE INDEX idx_user_role_assigned ON user_roles ( created );-- --
 
 
 -- Role action privileges
@@ -1594,6 +1618,10 @@ CREATE TABLE entry_content (
 	plain TEXT DEFAULT '' COLLATE NOCASE,
 	-- Content exactly as entered
 	content TEXT DEFAULT '' COLLATE NOCASE,
+	
+	-- Include in full text search table
+	is_full_text INTEGER DEFAULT 0 
+		CHECK ( is_full_text IN ( 0, 1 ) ),
 	
 	-- Dynamically generated JSON
 	authorship TEXT NOT NULL DEFAULT '{ "authors" : [] }',
