@@ -1,7 +1,24 @@
 
+PRAGMA encoding = "UTF-8";
+PRAGMA temp_store = "2";
+PRAGMA auto_vacuum = "2";
+PRAGMA secure_delete = "1";
+PRAGMA foreign_keys = ON;
+
+-- GUID/UUID generator helper
+CREATE VIEW uuid AS SELECT lower(
+	hex( randomblob( 4 ) ) || '-' || 
+	hex( randomblob( 2 ) ) || '-' || 
+	'4' || substr( hex( randomblob( 2 ) ), 2 ) || '-' || 
+	substr( 'AB89', 1 + ( abs( random() ) % 4 ) , 1 )  ||
+	substr( hex( randomblob( 2 ) ), 2 ) || '-' || 
+	hex( randomblob( 6 ) )
+) AS id;-- --
+
 -- Activity history
 CREATE TABLE event_logs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+	uuid TEXT DEFAULT NULL COLLATE NOCASE,
 	
 	-- Serialized JSON
 	content TEXT NOT NULL DEFAULT 
@@ -21,6 +38,8 @@ CREATE TABLE event_logs (
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	expires DATETIME DEFAULT NULL
 );-- --
+CREATE INDEX idx_log_uuid ON event_logs ( uuid )
+	WHERE uuid IS NOT NULL;-- --
 CREATE INDEX idx_log_label ON event_logs ( label );-- --
 CREATE INDEX idx_log_created ON event_logs ( created );-- --
 CREATE INDEX idx_log_expires ON event_logs ( expires )
@@ -99,6 +118,9 @@ CREATE INDEX idx_log_response ON web_logs ( response );-- --
 CREATE TRIGGER app_error_insert AFTER INSERT ON event_logs FOR EACH ROW
 WHEN NEW.label = 'error' OR NEW.label = 'notice' OR NEW.label = 'warning'
 BEGIN
+	UPDATE event_logs SET uuid = ( SELECT id FROM uuid ) 
+		WHERE id = NEW.id;
+	
 	INSERT INTO app_logs(
 		log_id, code, line, origin
 	) VALUES (
@@ -128,6 +150,37 @@ BEGIN
 	);
 END;-- --
 
+
+CREATE VIEW app_log_view AS SELECT
+	el.id AS id,
+	el.uuid AS uuid,
+	el.label AS label,
+	el.created AS created,
+	el.expires AS expires,
+	al.code AS code,
+	al.line AS line,
+	al.origin AS origin
+	
+	FROM app_logs al
+	JOIN event_logs el ON al.log_id = el.id;-- --
+
+CREATE VIEW web_log_view AS SELECT
+	el.id AS id,
+	el.uuid AS uuid,
+	el.label AS label,
+	el.created AS created,
+	el.expires AS expires,
+	wl.realm AS realm,
+	wl.ip AS ip,
+	wl.method AS method,
+	wl.uri AS uri,
+	wl.user_agent AS user_agent,
+	wl.query_string AS query_string,
+	wl.language AS language,
+	wl.response AS response
+	
+	FROM web_logs wl
+	JOIN event_logs el ON wl.log_id = el.id;-- --
 
 -- Log body searching
 CREATE VIRTUAL TABLE log_search 
