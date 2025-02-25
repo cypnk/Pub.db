@@ -1,4 +1,10 @@
 
+PRAGMA encoding = "UTF-8";
+PRAGMA temp_store = "2";
+PRAGMA auto_vacuum = "2";
+PRAGMA secure_delete = "1";
+PRAGMA foreign_keys = ON;
+
 -- Helper views
 
 -- Generate a random unique string
