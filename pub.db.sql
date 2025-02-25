@@ -1530,10 +1530,6 @@ CREATE TABLE entries (
 		REFERENCES entries ( id ) ON DELETE SET NULL,
 	type_id INTEGER NOT NULL,
 	
-	-- If true, don't publish regardless of pub date
-	is_draft INTEGER NOT NULL DEFAULT 0
-		CHECK ( is_draft IN ( 0, 1 ) ),
-	
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
@@ -1549,7 +1545,6 @@ CREATE TABLE entries (
 );-- --
 CREATE INDEX idx_entry_parent ON entries ( parent_id )
 	WHERE parent_id IS NOT NULL;-- --
-CREATE INDEX idx_entry_draft ON entries ( is_draft );-- --
 CREATE INDEX idx_entry_etype ON entries ( type_id );-- --
 CREATE INDEX idx_entry_settings ON entries ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
@@ -1557,9 +1552,19 @@ CREATE INDEX idx_entry_settings ON entries ( setting_id )
 CREATE TABLE entry_meta(
 	entry_id INTEGER NOT NULL,
 	urn TEXT NOT NULL COLLATE NOCASE,
+	
+	-- If true, don't publish regardless of pub date
+	is_draft INTEGER NOT NULL DEFAULT 1
+		CHECK ( is_draft IN ( 0, 1 ) ),
+	
+	-- Allow this entry to be addressed by entry_id directly
+	is_direct INTEGER NOT NULL DEFAULT 0 
+		CHECK ( is_direct IN ( 0, 1 ) ),
+	
 	created DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
 	published DATETIME DEFAULT NULL,
+	hierarchy TEXT DEFAULT NULL,
 	sort_order INTEGER NOT NULL DEFAULT 0,
 	status INTEGER DEFAULT NULL,
 	
@@ -1575,6 +1580,8 @@ CREATE TABLE entry_meta(
 );-- --
 CREATE UNIQUE INDEX idx_entry_meta ON entry_meta ( entry_id );-- --
 CREATE UNIQUE INDEX idx_entry_urn ON entry_meta ( urn );-- --
+CREATE INDEX idx_entry_draft ON entry_meta ( is_draft );-- --
+CREATE INDEX idx_entry_direct ON entry_meta ( is_direct );-- --
 CREATE INDEX idx_entry_created ON entry_meta ( created );-- --
 CREATE INDEX idx_entry_updated ON entry_meta ( updated );-- --
 CREATE INDEX idx_entry_pub ON entry_meta ( published ASC )
@@ -1660,9 +1667,12 @@ CREATE VIEW entry_view AS SELECT
 	e.id AS id, 
 	
 	em.urn AS urn, 
+	em.is_draft AS is_draft, 
+	em.is_direct AS is_direct, 
 	em.created AS created, 
 	em.updated AS updated, 
 	em.published AS published, 
+	em.hierarchy AS hierarchy,
 	em.sort_order AS sort_order, 
 	
 	em.status AS status, 
@@ -1677,7 +1687,6 @@ CREATE VIEW entry_view AS SELECT
 	ed.rights AS rights,  
 	ed.language_id AS language_id, 
 	
-	e.is_draft AS is_draft, 
 	et.info AS type_settings, 
 	t.settings_override AS type_settings_override, 
 	es.settings AS entry_settings, 
