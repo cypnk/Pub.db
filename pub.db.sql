@@ -26,6 +26,16 @@ CREATE VIEW uuid AS SELECT lower(
 	hex( randomblob( 6 ) )
 ) AS id;-- --
 
+CREATE VIEW uuid_v7 AS SELECT lower(
+	substr( hex( ( strftime( '%s','now' ) * 1000 ) ), 1, 12 ) || '-' ||
+	'7' || substr( hex( randomblob( 2 ) ), 2 ) || '-' ||
+	substr( '89AB', 1 + ( abs( random() ) % 4 ), 1 ) ||
+	substr( hex( randomblob( 2 ) ), 2 ) || '-' ||
+	hex( randomblob( 6 ) ) || '-' ||
+	hex( randomblob( 6 ) )
+) AS id;-- --
+
+
 
 -- Update/upgrade tracking
 CREATE TABLE versions (
