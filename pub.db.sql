@@ -2828,6 +2828,8 @@ CREATE VIEW collection_view AS SELECT
 	sites.title AS site_title,
 	sites.basename AS basename,
 	sites.basepath AS basepath,
+	sites.is_active AS site_active,
+	sites.is_maintenance AS site_maintenance,
 	
 	workspaces.id AS workspace_id,
 	collection_meta.category_count AS category_count,
@@ -2841,6 +2843,8 @@ CREATE VIEW collection_view AS SELECT
 		'site_title', sites.title,
 		'basename', sites.basename,
 		'basepath', sites.basepath,
+		'site_active', sites.is_active,
+		'site_maintenance', sites.is_maintenance,
 		'settings', json( settings.info ),
 		'settings_override', json( collections.settings_override ),
 		
@@ -2908,16 +2912,21 @@ LEFT JOIN settings ON workspaces.setting_id = settings.id;
 -- Service document view for a site URL
 -- Usage:
 -- SELECT * FROM service_view WHERE basename = :basename
+-- SELECT * FROM service_view WHERE is_active = :is_active
 CREATE VIEW service_view AS SELECT
 	sites.id AS id,
 	sites.basename AS basename,
 	sites.basepath AS basepath,
+	sites.is_active AS is_active,
+	sites.is_maintenance AS is_maintenance,
 	
 	json_object( 
 		'id', sites.id,
 		'title', sites.title,
 		'basename', sites.basename,
 		'basepath', sites.basepath,
+		'is_active', sites.is_active,
+		'is_maintenance', sites.is_maintenance,
 		'settings', json( settings.info ),
 		'settings_override', json( sites.settings_override ),
 		'workspaces', IFNULL( (
