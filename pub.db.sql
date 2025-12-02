@@ -2785,138 +2785,160 @@ CREATE TABLE author_templates(
 -- Content views
 
 
--- Service document view for a site URL
--- Usage:
--- SELECT * FROM service_view WHERE basename = :basename
-CREATE VIEW service_view AS SELECT
-	sites.id AS id, 
-	sites.title AS title,
-	sites.basename AS basename,
-	sites.basepath AS basepath,
-	settings.info AS settings,
-	sites.settings_override AS settings_override,
+-- Category
+CREATE VIEW category_view AS
+SELECT
+	categories.id AS category_id,
+	categories.parent_id AS parent_id,
+	category_meta.urn AS urn,
+	category_meta.created AS created,
+	category_meta.updated AS updated,
+	category_meta.sort_order AS sort_order,
+	COALESCE( category_meta.status, 0 ) AS status,
 	
-	-- Site workspaces
-	'{ "workspaces" : [ ' || 
-	GROUP_CONCAT(
-		'{ '			|| 
-		'"id":'			|| workspaces.id		|| ',' ||
-		'"urn":"'		|| workspace_meta.urn		|| '",' ||
-		'"setting_id":'		|| workspaces.setting_id	|| ',' ||
-		'"settings_override":'	|| workspaces.settings_override	|| ',' ||
-		'"created":"'		|| workspace_meta.created	|| '",' ||
-		'"updated":"'		|| workspace_meta.updated	|| '",' ||
-		'"status":'		|| COALESCE( workspace_meta.status, 0 ) ||
-		
-		-- Site collections
-		'"collections" : [ ' || IFNULL(
-			( SELECT 
-				GROUP_CONCAT( '{ '		|| 
-					'"id":'			|| collections.id			|| ',' || 
-					'"workspace_id":'	|| collections.workspace_id		|| ',' ||
-					'"urn":"'		|| collection_meta.urn			|| '",' || 
-					'"entry_count":'	|| collection_meta.entry_count		|| ',' ||  
-					'"category_count":'	|| collection_meta.category_count	|| ',' ||
-					'"created":"'		|| collection_meta.created		|| '",' ||
-					'"updated":"'		|| collection_meta.updated		|| '",' ||    
-					'"status":'		|| COALESCE( collection_meta.status, 0 ) || ',' ||
-					
-					-- Collection accept types
-					'"accept" : [ ' || IFNULL(
-						( SELECT 
-							GROUP_CONCAT( '{ '	|| 
-								'"id":'		|| accept.id		|| ',' || 
-								'"mime_type":"'	|| accept.mime_type	|| '"}', ',' ) 
-						FROM accept WHERE accept.collection_id = collections.id )
-						, '' ) || ' ], ' ||
-						
-					-- Collection categories
-					'"categories" : [ ' || IFNULL(
-						( SELECT 
-							GROUP_CONCAT( '{ '	|| 
-								'"id":'		|| categories.id			|| ',' ||
-								'"parent_id":'	|| COALESCE( categories.parent_id, 0 )	|| ',' ||
-								'"urn":"'	|| COALESCE( category_meta.urn, '' )	|| '",' || 
-								'"created":"'	|| category_meta.created		|| '",' ||
-								'"updated":"'	|| category_meta.updated		|| '",' ||
-								'"sort_order":'	|| category_meta.sort_order		|| ',' ||   
-								'"status":'	|| COALESCE( category_meta.status, 0 )	|| '}', ',' ) 
-						FROM categories 
-						LEFT JOIN category_meta ON categories.id = category_meta.category_id 
-						LEFT JOIN category_collections ON categories.id = category_collections.category_id
-						WHERE category_collections.collection_id = collections.id ), '' ) || ' ] }' 
-				, ',' ) AS colls 
-			FROM collections 
-			LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id
-			WHERE workspaces.id = collections.workspace_id 
-		 ), '' ) || ' ] }', ',' 
-	) || ' ] }' AS wkspaces
-	
-FROM sites
-INNER JOIN site_workspaces ON 
-	sites.id = site_workspaces.site_id
-LEFT JOIN settings ON sites.setting_id = settings.id
-LEFT JOIN workspaces ON 
-	site_workspaces.workspace_id = workspaces.id
-LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.workspace_id;
--- --
+	json_object(
+		'id', categories.id,
+		'parent_id', COALESCE( categories.parent_id, 0 ),
+		'urn', category_meta.urn,
+		'created', category_meta.created,
+		'updated', category_meta.updated,
+		'sort_order', category_meta.sort_order,
+		'status', COALESCE( category_meta.status, 0 )
+	) AS category_json
+FROM categories
+LEFT JOIN category_meta ON categories.id = category_meta.category_id;
 
 -- Collection
 -- Usage:
 -- SELECT * FROM collection_view WHERE sites.basename = :basename
 -- SELECT * FROM collection_view WHERE sites.id = :site_id
-CREATE VIEW collection_view AS SELECT 
-	collections.id AS id, 
-	collection_meta.urn AS urn,
-	collection_meta.category_count AS category_count,
-	collection_meta.entry_count AS entry_count,
-	s.info AS settings,
-	collections.settings_override AS settings_override,
-	
+CREATE VIEW collection_view AS SELECT
+	collections.id AS id,
 	sites.id AS site_id,
 	sites.title AS site_title,
 	sites.basename AS basename,
 	sites.basepath AS basepath,
 	
 	workspaces.id AS workspace_id,
+	collection_meta.category_count AS category_count,
+	collection_meta.entry_count AS entry_count,
 	
-	-- Collection accept types
-	'{ "accept" : [ ' || IFNULL(
-		GROUP_CONCAT( '{ '		|| 
-			'"id":'			|| accept.id				|| ',' || 
-			'"mime_type":"'		|| accept.mime_type			|| '",' || 
-			'"collection_id":'	|| accept.collection_id			|| 
-		' }', ',' ), '' ) 
-	|| ' ] }' AS collaccept,
+	json_object(
+		'id', collections.id,
+		'urn', collection_meta.urn,
+		'category_count', collection_meta.category_count,
+		'entry_count', collection_meta.entry_count,
+		'site_title', sites.title,
+		'basename', sites.basename,
+		'basepath', sites.basepath,
+		'settings', json( settings.info ),
+		'settings_override', json( collections.settings_override ),
+		
+		-- Collection accept types
+		'accept', IFNULL( ( 
+			SELECT json_group_array(
+				 json_object(
+					 'id', accept.id,
+					 'mime_type', accept.mime_type,
+					 'collection_id', accept.collection_id
+				 )
+			)
+			FROM accept
+			WHERE accept.collection_id = collections.id 
+		), '[]' ),
 	
-	-- Collection categories
-	'{ "categories" : [ ' || IFNULL(
-		GROUP_CONCAT( '{ '		|| 
-			'"id":'			|| categories.id			|| ',' || 
-			'"parent_id":'		|| COALESCE( categories.parent_id, 0 )	|| ',' ||
-			'"collection_id":'	|| category_collections.collection_id	|| ',' ||
-			'"urn":"'		|| COALESCE( category_meta.urn, '' )	|| '",' || 
-			'"created":"'		|| category_meta.created		|| '",' ||
-			'"updated":"'		|| category_meta.updated		|| '",' ||
-			'"sort_order":'		|| category_meta.sort_order		|| ',' ||  		
-			'"status":'		|| COALESCE( category_meta.status, 0 )	||
-		' }', ',' ), '' ) 
-	|| ' ] }' AS cats
+		-- Collection categories
+		'categories', IFNULL( (
+			SELECT json_group_array( category_json )
+				FROM category_view
+				INNER JOIN category_collections ON 
+					category_view.category_id = category_collections.category_id 
+				WHERE category_collections.collection_id = collections.id
+		), '[]' )
+	) AS collection_json
 	
 FROM collections
 INNER JOIN site_workspaces ON 
 	collections.workspace_id = site_workspaces.workspace_id
 INNER JOIN sites ON site_workspaces.site_id = sites.id
-LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id 
-LEFT JOIN settings s ON sites.setting_id = s.id
-LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id
-LEFT JOIN category_collections ON collections.id = category_collections.collection_id
-LEFT JOIN categories ON category_collections.category_id = categories.id
-LEFT JOIN category_meta ON categories.id = category_meta.category_id
-LEFT JOIN accept ON collections.id = accept.collection_id;
+LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id
+LEFT JOIN settings ON collections.setting_id = settings.id
+LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id;
 -- --
 
+-- Workspace/region view
+-- Usage:
+-- SELECT * FROM workspace_view WHERE workspaces.site_id = ::site_id
+CREATE VIEW workspace_view AS SELECT
+	workspaces.id AS id,
+	workspaces.site_id AS site_id,
+	COALESCE( workspace_meta.status, 0 ) AS status,
+	
+	json_object(
+		'id', workspaces.id,
+		'site_id', workspaces.site_id,
+		'urn', workspace_meta.urn,
+		'setting_id', workspaces.setting_id,
+		'settings', json( settings.info ),
+		'settings_override', json( workspaces.settings_override ),
+		'created', workspace_meta.created,
+		'updated', workspace_meta.updated,
+		'status', COALESCE( workspace_meta.status, 0 ),
+		'collections', IFNULL( (
+			SELECT json_group_array( collection_json )
+			FROM collection_view
+			WHERE collection_view.workspace_id = workspaces.id
+		), '[]' )
+	) AS workspace_json
+FROM workspaces
+LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.workspace_id
+LEFT JOIN settings ON workspaces.setting_id = settings.id;
+-- --
 
+-- Service document view for a site URL
+-- Usage:
+-- SELECT * FROM service_view WHERE basename = :basename
+CREATE VIEW service_view AS SELECT
+	sites.id AS id,
+	sites.basename AS basename,
+	sites.basepath AS basepath,
+	
+	json_object( 
+		'id', sites.id,
+		'title', sites.title,
+		'basename', sites.basename,
+		'basepath', sites.basepath,
+		'settings', json( settings.info ),
+		'settings_override', json( sites.settings_override ),
+		'workspaces', IFNULL( (
+			SELECT json_group_array( workspace_json )
+			FROM workspace_view
+			WHERE workspace_view.site_id = sites.id
+		), '[]' )
+	) service_json
+FROM sites
+INNER JOIN site_workspaces ON sites.id = site_workspaces.site_id
+LEFT JOIN settings ON sites.setting_id = settings.id;
+-- --
+
+-- Overview
+CREATE VIEW site_view AS SELECT
+	collection_id,
+	site_id,
+	site_title,
+	site_basename,
+	site_basepath,
+	workspace_id,
+	
+	json_extract( collection_json, '$.urn' ) AS urn,
+	json_extract( collection_json, '$.entry_count' ) AS entry_count,
+	json_extract( collection_json, '$.category_count' ) AS category_count,
+	json_extract( collection_json, '$.settings' ) AS settings,
+	json_extract( collection_json, '$.settings_override' ) AS settings_override,
+	json_extract( collection_json, '$.accept') AS accept,
+	json_extract( collection_json, '$.categories') AS categories
+FROM collection_view
+ORDER BY site_title, collection_id;
 
 
 
