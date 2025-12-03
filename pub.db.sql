@@ -77,6 +77,8 @@ CREATE INDEX idx_status_weight ON statuses ( status, weight );-- --
 -- List of languages
 CREATE TABLE languages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	
+	-- Localized display label
 	label TEXT NOT NULL COLLATE NOCASE,
 	iso_code TEXT NOT NULL COLLATE NOCASE,
 	
@@ -105,7 +107,7 @@ CREATE INDEX idx_lang_settings ON languages ( setting_id )
 
 -- Performant metadata and generated info that doesn't change the content
 CREATE TABLE lang_meta(
-	language_id INTEGER NOT NULL,
+	language_id INTEGER PRIMARY KEY,
 	
 	-- Default interface language
 	is_default INTEGER NOT NULL DEFAULT 0
@@ -123,7 +125,6 @@ CREATE TABLE lang_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_lang_meta ON lang_meta ( language_id );-- --
 CREATE INDEX idx_lang_default ON lang_meta ( is_default );-- --
 CREATE INDEX idx_lang_sort ON lang_meta ( sort_order );-- --
 CREATE INDEX idx_lang_status ON lang_meta ( status )
@@ -138,8 +139,8 @@ END;-- --
 CREATE TRIGGER lang_default_update BEFORE UPDATE ON lang_meta FOR EACH ROW 
 WHEN NEW.is_default <> 0 AND NEW.is_default IS NOT NULL
 BEGIN
-	UPDATE languages SET is_default = 0 
-		WHERE is_default IS NOT 0 AND id IS NOT NEW.id;
+	UPDATE lang_meta SET is_default = 0 
+		WHERE is_default IS NOT 0 AND language_id IS NOT NEW.id;
 END;-- --
 
 INSERT INTO languages (
@@ -506,7 +507,7 @@ CREATE TABLE translations (
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_translation_local ON translations( locale );-- --
+CREATE UNIQUE INDEX idx_translation_local ON translations( language_id, locale );-- --
 CREATE INDEX idx_translation_lang ON translations( language_id );-- --
 CREATE INDEX idx_translation_default ON translations( is_default );-- --
 CREATE INDEX idx_translation_setting ON translations( setting_id )
@@ -527,24 +528,37 @@ WHEN NEW.is_default <> 0 AND NEW.is_default IS NOT NULL
 BEGIN
 	UPDATE translations SET is_default = 0 
 		WHERE is_default IS NOT 0 AND id IS NOT NEW.id 
-			AND language_id = OLD.language_id;
+			AND language_id = NEW.language_id;
 END;-- --
 
 CREATE VIEW locale_view AS SELECT
 	t.id AS id,
 	l.label AS label,
 	l.iso_code AS iso_code,
-	l.is_default AS is_lang_default,
-	l.eng_name AS lang_eng_name,
-	l.lang_group AS lang_group,
 	t.locale AS locale,
 	t.is_default AS is_locale_default,
-	t.definitions AS definitions,
-	s.info AS settings,
-	t.settings_override AS settings_override
+	m.is_default AS is_lang_default,
+	l.lang_group AS lang_group,
+	
+	json_object(
+		'id', t.id,
+		'label', l.label,
+		'iso_code', l.iso_code,
+		'locale', t.locale,
+		'lang_eng_name', l.eng_name,
+		'lang_group', l.lang_group,
+		'is_locale_default', t.is_default,
+		'is_lang_default', m.is_default,
+		'settings', json_patch( 
+			json_patch( '{}', s.info ), 
+			json_patch( '{}', t.settings_override )
+		),
+		'definitions', json_patch( '{}', t.definitions )
+	) AS locale_json
 	
 	FROM translations t
 	JOIN languages l ON t.language_id = l.id
+	JOIN lang_meta m ON m.language_id = l.id
 	LEFT JOIN settings s ON t.setting_id = s.id;-- --
 
 -- Localized date presentation formats
@@ -618,7 +632,7 @@ CREATE TABLE site_aliases (
 CREATE UNIQUE INDEX idx_site_alias ON site_aliases ( site_id, basename );-- --
 
 CREATE TABLE site_meta(
-	site_id INTEGER NOT NULL,
+	site_id INTEGER PRIMARY KEY,
 	url TEXT NOT NULL COLLATE NOCASE,
 	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -634,7 +648,6 @@ CREATE TABLE site_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_site_meta ON site_meta ( site_id );-- --
 CREATE UNIQUE INDEX idx_site_url ON site_meta ( url );-- --
 CREATE INDEX idx_site_created ON site_meta ( created );-- --
 CREATE INDEX idx_site_updated ON site_meta ( updated );-- --
@@ -671,6 +684,13 @@ BEGIN
 		WHERE site_id = NEW.id;
 END;-- --
 
+
+-- Search by domain alias
+-- Usage: 
+-- SELECT * FROM sites_enabled WHERE base_alias LIKE '%example.com%';
+-- SELECT * FROM sites_enabled se 
+--	JOIN json_each( json_extract( se.site_json, '$.aliases' ) ) AS je
+--	WHERE je.value = 'example.com';
 CREATE VIEW sites_enabled AS SELECT 
 	s.id AS id, 
 	s.label AS label, 
@@ -679,16 +699,32 @@ CREATE VIEW sites_enabled AS SELECT
 	s.is_active AS is_active,
 	s.is_maintenance AS is_maintenance,
 	GROUP_CONCAT( DISTINCT a.basename ) AS base_alias,
-	COALESCE( sg.info, '{}' ) AS settings,
-	s.settings_override AS settings_override, 
 	sm.url AS url,
 	sm.created AS created,
-	sm.updated AS updated
+	sm.updated AS updated,
+	
+	json_object( 
+		'id', s.id, 
+		'label', s.label, 
+		'basename', s.basename, 
+		'basepath', s.basepath, 
+		'is_active', s.is_active,
+		'is_maintenance', s.is_maintenance,
+		'url', sm.url,
+		'created', sm.created,
+		'updated', sm.updated,
+		'aliases', json_group_array( DISTINCT a.basename ),
+		'settings', json_patch( 
+			json_patch( '{}', sg.info ), 
+			json_patch( '{}', settings_override 
+		)
+	) AS site_json
 	
 	FROM sites s 
 	INNER JOIN site_meta sm ON s.id = sm.site_id 
 	LEFT JOIN settings sg ON s.setting_id = sg.id 
-	LEFT JOIN site_aliases a ON s.id = a.site_id;-- --
+	LEFT JOIN site_aliases a ON s.id = a.site_id 
+	GROUP BY s.id;-- --
 
 
 
@@ -717,7 +753,7 @@ CREATE INDEX idx_user_settings ON users ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
 CREATE TABLE user_meta(
-	user_id INTEGER NOT NULL,
+	user_id INTEGER PRIMARY KEY,
 	
 	-- Anonymous token, other than username, when publicly referenced
 	reference TEXT DEFAULT NULL COLLATE NOCASE,
@@ -740,7 +776,6 @@ CREATE TABLE user_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_user_meta ON user_meta ( user_id );-- --
 CREATE UNIQUE INDEX idx_user_ref ON user_meta ( reference )
 	WHERE reference IS NOT NULL;-- --
 CREATE INDEX idx_user_enabled ON user_meta ( is_enabled );
@@ -851,7 +886,7 @@ CREATE INDEX idx_provider_settings ON providers( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
 CREATE TABLE provider_meta(
-	provider_id INTEGER NOT NULL,
+	provider_id INTEGER PRIMARY KEY,
 	uuid TEXT NOT NULL COLLATE NOCASE,
 	realm TEXT NOT NULL COLLATE NOCASE,
 	sort_order INTEGER NOT NULL DEFAULT 0,
@@ -870,7 +905,6 @@ CREATE TABLE provider_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_provider ON provider_meta ( provider_id );-- --
 CREATE INDEX idx_provider_sort ON provider_meta( sort_order );-- --
 CREATE INDEX idx_provider_realm ON provider_meta( realm );-- --
 CREATE INDEX idx_provider_created ON provider_meta( created );-- --
@@ -942,6 +976,8 @@ CREATE TABLE role_desc(
 	description TEXT DEFAULT NULL COLLATE NOCASE,
 	language_id INTEGER DEFAULT NULL,
 	
+	PRIMARY KEY ( role_id, language_id ),
+	
 	CONSTRAINT fk_role_desc
 		FOREIGN KEY ( role_id ) 
 		REFERENCES roles ( id )
@@ -1007,28 +1043,47 @@ CREATE INDEX idx_permission_settings ON role_permissions ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
 -- Role based user permission view
-CREATE VIEW user_permission_view AS 
-SELECT 
-	user_id AS id, 
-	GROUP_CONCAT( rp.provider_id, ',' ) AS providers, 
-	GROUP_CONCAT( 
-		COALESCE( pg.info, '{}' ), ',' 
-	) AS role_settings,
-	GROUP_CONCAT( 
-		COALESCE( roles.settings_override, '{}' ), ',' 
-	) AS role_settings_override,
-	GROUP_CONCAT( 
-		COALESCE( sp.info, '{}' ), ',' 
-	) AS permission_settings,
-	GROUP_CONCAT( 
-		COALESCE( rp.settings_override, '{}' ), ',' 
-	) AS permission_settings_override
+CREATE VIEW user_permission_view AS SELECT 
+	ur.user_id AS id,
 	
-	FROM user_roles
-	JOIN roles ON user_roles.role_id = roles.id
-	LEFT JOIN settings pg ON roles.setting_id = rg.id
-	LEFT JOIN role_permissions rp ON roles.id = rp.role_id
-	LEFT JOIN settings sp ON rp.setting_id = sp.id;-- --
+	-- Provider JSON array
+	json_group_array( rp.provider_id ) AS providers,
+	
+	-- Role JSON array
+	json_group_array(
+		json_object(
+			'role_id', roles.id,
+			'role_label', roles.label,
+			
+			-- Permissions JSON array
+			'permissions', IFNULL( (
+				SELECT json_group_array(
+					json_object(
+						'permission_id', pp.id,
+						'provider_id', pp.provider_id,
+						'settings', json_patch(
+							json_patch( '{}', sp.info ),
+							json_patch( '{}', pp.settings_override )
+						)
+					)
+				)
+				FROM role_permissions pp
+				LEFT JOIN settings sp ON pp.setting_id = sp.id
+				WHERE pp.role_id = roles.id
+			), '[]' ),
+			
+			'settings', json_patch(
+				json_patch( '{}', pg.info ),
+				json_patch( '{}', roles.settings_override )
+			),
+			
+		)
+	) AS roles_json
+FROM user_roles ur
+JOIN roles ON ur.role_id = roles.id
+LEFT JOIN settings pg ON roles.setting_id = pg.id
+LEFT JOIN role_permissions rp ON roles.id = rp.role_id
+GROUP BY ur.user_id;
 
 
 
@@ -2845,8 +2900,10 @@ CREATE VIEW collection_view AS SELECT
 		'basepath', sites.basepath,
 		'site_active', sites.is_active,
 		'site_maintenance', sites.is_maintenance,
-		'settings', json( settings.info ),
-		'settings_override', json( collections.settings_override ),
+		'settings', json_patch(
+			json_patch( '{}', settings.info ),
+			json_patch( '{}', collections.settings_override )
+		),
 		
 		-- Collection accept types
 		'accept', IFNULL( ( 
@@ -2893,8 +2950,11 @@ CREATE VIEW workspace_view AS SELECT
 		'site_id', workspaces.site_id,
 		'urn', workspace_meta.urn,
 		'setting_id', workspaces.setting_id,
-		'settings', json( settings.info ),
-		'settings_override', json( workspaces.settings_override ),
+		
+		'settings', json_patch(
+			json_patch( '{}', settings.info ),
+			json_patch( '{}', workspaces.settings_override )
+		),
 		'created', workspace_meta.created,
 		'updated', workspace_meta.updated,
 		'status', COALESCE( workspace_meta.status, 0 ),
@@ -2927,8 +2987,10 @@ CREATE VIEW service_view AS SELECT
 		'basepath', sites.basepath,
 		'is_active', sites.is_active,
 		'is_maintenance', sites.is_maintenance,
-		'settings', json( settings.info ),
-		'settings_override', json( sites.settings_override ),
+		'settings', json_patch(
+			json_patch( '{}', settings.info ),
+			json_patch( '{}', sites.settings_override )
+		),
 		'workspaces', IFNULL( (
 			SELECT json_group_array( workspace_json )
 			FROM workspace_view
