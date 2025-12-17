@@ -27,7 +27,7 @@ CREATE VIEW uuid AS SELECT lower(
 ) AS id;-- --
 
 CREATE VIEW uuid_v7 AS SELECT lower(
-	substr( hex( ( strftime( '%s','now' ) * 1000 ) ), 1, 12 ) || '-' ||
+	printf( '%012x', strftime( '%s','now' ) * 1000 ), 1, 12 ) || '-' ||
 	'7' || substr( hex( randomblob( 2 ) ), 2 ) || '-' ||
 	substr( '89AB', 1 + ( abs( random() ) % 4 ), 1 ) ||
 	substr( hex( randomblob( 2 ) ), 2 ) || '-' ||
@@ -549,11 +549,8 @@ CREATE VIEW locale_view AS SELECT
 		'lang_group', l.lang_group,
 		'is_locale_default', t.is_default,
 		'is_lang_default', m.is_default,
-		'settings', json_patch( 
-			json_patch( '{}', s.info ), 
-			json_patch( '{}', t.settings_override )
-		),
-		'definitions', json_patch( '{}', t.definitions )
+		'settings', json_patch( s.info, t.settings_override ),
+		'definitions',  COALESCE( t.definitions, '{}' )
 	) AS locale_json
 	
 	FROM translations t
@@ -714,10 +711,7 @@ CREATE VIEW sites_enabled AS SELECT
 		'created', sm.created,
 		'updated', sm.updated,
 		'aliases', json_group_array( DISTINCT a.basename ),
-		'settings', json_patch( 
-			json_patch( '{}', sg.info ), 
-			json_patch( '{}', settings_override )
-		)
+		'settings', json_patch( sg.info, settings_override )
 	) AS site_json
 	
 	FROM sites s 
@@ -795,7 +789,7 @@ CREATE TABLE user_fields (
 	PRIMARY KEY ( user_id, field_name ),
 	CONSTRAINT fk_field_user 
 		FOREIGN KEY ( user_id ) 
-		REFERENCES users ( user_id ) 
+		REFERENCES users ( id ) 
 		ON DELETE CASCADE
 );-- --
 CREATE INDEX idx_user_field_user ON user_fields ( user_id );-- --
@@ -937,6 +931,7 @@ END;-- --
 -- User roles, and permissions
 CREATE TABLE roles(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	label TEXT COLLATE NOCASE,
 	setting_id INTEGER DEFAULT NULL,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
@@ -945,6 +940,8 @@ CREATE TABLE roles(
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
 );-- --
+CREATE UNIQUE INDEX idx_role_label ON roles ( label ) 
+	WHERE label IS NOT NULL;
 CREATE INDEX idx_role_settings ON roles ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
@@ -1053,7 +1050,7 @@ CREATE VIEW user_permission_view AS SELECT
 	json_group_array(
 		json_object(
 			'role_id', roles.id,
-			'role_label', roles.label,
+			'role_label', COALESCE( rd.label, roles.label, 'role_id_' || roles.id ),
 			
 			-- Permissions JSON array
 			'permissions', IFNULL( (
@@ -1061,10 +1058,7 @@ CREATE VIEW user_permission_view AS SELECT
 					json_object(
 						'permission_id', pp.id,
 						'provider_id', pp.provider_id,
-						'settings', json_patch(
-							json_patch( '{}', sp.info ),
-							json_patch( '{}', pp.settings_override )
-						)
+						'settings', json_patch( sp.info, pp.settings_override )
 					)
 				)
 				FROM role_permissions pp
@@ -1072,15 +1066,13 @@ CREATE VIEW user_permission_view AS SELECT
 				WHERE pp.role_id = roles.id
 			), '[]' ),
 			
-			'settings', json_patch(
-				json_patch( '{}', pg.info ),
-				json_patch( '{}', roles.settings_override )
-			),
+			'settings', json_patch( pg.info roles.settings_override ),
 			
 		)
 	) AS roles_json
 FROM user_roles ur
 JOIN roles ON ur.role_id = roles.id
+LEFT JOIN role_desc rd ON roles.id = rd.role_id 
 LEFT JOIN settings pg ON roles.setting_id = pg.id
 LEFT JOIN role_permissions rp ON roles.id = rp.role_id
 GROUP BY ur.user_id;
@@ -1172,8 +1164,9 @@ CREATE INDEX idx_user_auth_settings ON user_auth( setting_id )
 -- Secrity views
 
 -- User auth last activity
-CREATE VIEW auth_activity AS 
-SELECT user_id, 
+CREATE VIEW auth_activity AS SELECT 
+	id,
+	user_id, 
 	provider_id,
 	is_approved,
 	is_locked,
@@ -1255,7 +1248,7 @@ BEGIN
 		WHERE id = OLD.id AND ( 
 		failed_last_start IS NULL OR ( 
 		strftime( '%s', 'now' ) - 
-		strftime( '%s', 'failed_last_start' ) ) > 86400 );
+		strftime( '%s', failed_last_start ) ) > 86400 );
 END;-- --
 
 
@@ -1279,16 +1272,10 @@ CREATE VIEW login_view AS SELECT
 	u.status AS status_value,
 	
 	users.username AS username, 
-	users.password AS password, 
-	us.info AS user_settings,
-	users.settings_override AS user_settings_override, 
+	users.password AS password,
 	ua.is_approved AS is_approved, 
 	ua.is_locked AS is_locked, 
-	ua.expires AS expires, 
-	ls.info AS login_settings,
-	logins.settings_override AS login_settings_override,
-	ts.info AS auth_settings,
-	ua.settings_override AS auth_settings_override
+	ua.expires AS expires
 	
 	FROM logins
 	JOIN users ON logins.user_id = users.id
@@ -1298,36 +1285,113 @@ CREATE VIEW login_view AS SELECT
 	LEFT JOIN settings ts ON ua.setting_id = ts.id
 	LEFT JOIN settings ls ON logins.setting_id = ls.id
 	LEFT JOIN statuses u ON um.status = u.id;-- --
-
 -- Post-login user data
-CREATE VIEW user_view AS SELECT 
-	users.id AS id, 
-	users.uuid AS uuid, 
-	users.username AS username, 
-	users.password AS password, 
-	users.hash AS hash,
-	ua.is_approved AS is_approved, 
-	ua.is_locked AS is_locked, 
-	ua.expires AS expires, 
-	um.created AS created, 
-	um.updated AS updated, 
-	um.status AS status, 
-	u.label AS status_label,
-	u.is_unique AS status_is_unique,
-	u.weight AS status_weight,
-	u.status AS status_value,
+-- Usage:
+-- SELECT * FROM user_auth_view WHERE username = :username;
+CREATE VIEW user_auth_view AS
+SELECT 
+	l.id AS login_id,
+	l.user_id AS user_id,
+	l.lookup AS lookup, 
+	l.hash AS hash, 
+	u.username AS username,
+	u.password AS password,
 	um.reference AS reference,
-	us.info AS settings, 
-	users.settings_override AS settings_override, 
-	ts.info AS auth_settings,
-	ua.settings_override AS auth_settings_override
+	ua.is_approved AS is_approved,
+	ua.is_locked AS is_locked,
+	ua.expires AS expires,
+	ua.email AS email,
+	ua.mobile_pin AS mobile_pin,
 	
-	FROM users
-	JOIN user_meta um ON users.id = um.user_id
-	LEFT JOIN user_auth ua ON users.id = ua.user_id
-	LEFT JOIN settings ts ON ua.setting_id = ts.id
-	LEFT JOIN settings us ON users.setting_id = us.id
-	LEFT JOIN statuses u ON um.status = u.id;-- --
+	-- Consolidated JSON
+	json_object(
+		'user', json_object(
+			'id', u.id,
+			'username', u.username,
+			'reference', um.reference,
+			'status', json_object(
+				'id', st.id,
+				'label', st.label,
+				'description', st.description,
+				'is_unique', st.is_unique,
+				'weight', st.weight,
+				'value', st.value,
+				'settings', json_patch( ss.info, st.settings_override )
+			),
+			'settings', json_patch( us.info, u.settings_override )
+		),
+		'auth', json_object(
+			'is_approved', ua.is_approved,
+			'is_locked', ua.is_locked,
+			'email', ua.email,
+			'last_ip', ua.last_ip,
+			'last_ua', ua.last_ua,
+			'last_pass_change', ua.last_pass_change,
+			'last_lockout', ua.last_lockout,
+			'last_session_base', ua.last_session_base,
+			'last_session_id', ua.last_session_id,
+			'failed_attempts', ua.failed_attempts,
+			'failed_last_start', ua.failed_last_start,
+			'failed_last_attempt', ua.failed_last_attempt,
+			'created', ua.created,
+			'expires', ua.expires,
+			'settings', json_patch( ts.info, ua.settings_override )
+		),
+		'login', json_object(
+			'lookup', l.lookup,
+			'hash', l.hash,
+			'updated', l.updated,
+			'settings', json_patch( ls.info, l.settings_override )
+		),
+		'roles', IFNULL( (
+				SELECT json_group_array(
+					json_object(
+					'role_id', r.id,
+					'label', rd.label,
+					'description', rd.description,
+					'settings', json_patch( pg.info, r.settings_override ),
+					'permissions', (
+						SELECT json_group_array(
+							json_object(
+								'permission_id', rp.id,
+								'provider_id', rp.provider_id,
+								'provider', (
+									SELECT json_object(
+										'id', p.id,
+										'label', p.label,
+										'params', p.params,
+										'settings', json_patch( ps.info, p.settings_override )
+									)
+									FROM providers p
+									LEFT JOIN settings ps ON p.setting_id = ps.id
+										WHERE p.id = rp.provider_id
+								),
+								'settings', json_patch( sp.info, rp.settings_override )
+							)
+						)
+						FROM role_permissions rp
+						LEFT JOIN settings sp ON rp.setting_id = sp.id
+							WHERE rp.role_id = r.id
+					)
+				)
+			)
+			FROM user_roles ur
+			JOIN roles r ON ur.role_id = r.id
+			LEFT JOIN role_desc rd ON r.id = rd.role_id
+				LEFT JOIN settings pg ON r.setting_id = pg.id
+				WHERE ur.user_id = u.id
+		), '[]' )
+	) AS login_json
+
+FROM logins l
+JOIN users u ON l.user_id = u.id
+JOIN user_meta um ON u.id = um.user_id
+LEFT JOIN user_auth ua ON u.id = ua.user_id
+LEFT JOIN settings us ON u.setting_id = us.id
+LEFT JOIN settings ts ON ua.setting_id = ts.id
+LEFT JOIN settings ls ON l.setting_id = ls.id
+LEFT JOIN statuses st ON um.status = st.id
+LEFT JOIN settings ss ON st.setting_id = ss.id;-- --
 	
 
 
@@ -2900,10 +2964,7 @@ CREATE VIEW collection_view AS SELECT
 		'basepath', sites.basepath,
 		'site_active', sites.is_active,
 		'site_maintenance', sites.is_maintenance,
-		'settings', json_patch(
-			json_patch( '{}', settings.info ),
-			json_patch( '{}', collections.settings_override )
-		),
+		'settings', json_patch( settings.info, collections.settings_override ),
 		
 		-- Collection accept types
 		'accept', IFNULL( ( 
@@ -2951,10 +3012,7 @@ CREATE VIEW workspace_view AS SELECT
 		'urn', workspace_meta.urn,
 		'setting_id', workspaces.setting_id,
 		
-		'settings', json_patch(
-			json_patch( '{}', settings.info ),
-			json_patch( '{}', workspaces.settings_override )
-		),
+		'settings', json_patch( settings.info, workspaces.settings_override ),
 		'created', workspace_meta.created,
 		'updated', workspace_meta.updated,
 		'status', COALESCE( workspace_meta.status, 0 ),
@@ -2987,10 +3045,7 @@ CREATE VIEW service_view AS SELECT
 		'basepath', sites.basepath,
 		'is_active', sites.is_active,
 		'is_maintenance', sites.is_maintenance,
-		'settings', json_patch(
-			json_patch( '{}', settings.info ),
-			json_patch( '{}', sites.settings_override )
-		),
+		'settings', json_patch( settings.info, sites.settings_override ),
 		'workspaces', IFNULL( (
 			SELECT json_group_array( workspace_json )
 			FROM workspace_view
