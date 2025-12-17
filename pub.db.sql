@@ -589,7 +589,7 @@ CREATE INDEX idx_date_locales ON date_formats( locale_id );-- --
 -- Domain realms
 CREATE TABLE sites(
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	title TEXT NOT NULL COLLATE NOCASE,
+	label TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Domain name
 	basename TEXT NOT NULL DEFAULT 'localhost' COLLATE NOCASE,
@@ -609,7 +609,7 @@ CREATE TABLE sites(
 		REFERENCES settings ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_site_title ON sites ( title );-- --
+CREATE UNIQUE INDEX idx_site_title ON sites ( label );-- --
 -- E.G.: example.com, portal = example.com/portal
 CREATE UNIQUE INDEX idx_site_uri ON sites ( basename, basepath );-- --
 CREATE INDEX idx_site_basename ON sites ( basename );-- --
@@ -716,7 +716,7 @@ CREATE VIEW sites_enabled AS SELECT
 		'aliases', json_group_array( DISTINCT a.basename ),
 		'settings', json_patch( 
 			json_patch( '{}', sg.info ), 
-			json_patch( '{}', settings_override 
+			json_patch( '{}', settings_override )
 		)
 	) AS site_json
 	
