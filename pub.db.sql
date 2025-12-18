@@ -41,7 +41,7 @@ CREATE VIEW uuid_v7 AS SELECT lower(
 CREATE TABLE versions (
 	version_id INTEGER PRIMARY KEY AUTOINCREMENT,
 	installed TEXT NOT NULL,
-	created DATETIME DEFAULT CURRENT_TIMESTAMP
+	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );-- --
 CREATE UNIQUE INDEX idx_versions_installed ON versions ( created );-- --
 
@@ -50,23 +50,25 @@ CREATE UNIQUE INDEX idx_versions_installed ON versions ( created );-- --
 
 -- Repeatable model settings
 CREATE TABLE settings(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	label TEXT NOT NULL COLLATE NOCASE,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	label TEXT COLLATE NOCASE,
 	
 	-- Serialized JSON
 	info TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE
 );-- --
-CREATE UNIQUE INDEX idx_settings_label ON settings( label );-- --
+CREATE UNIQUE INDEX idx_settings_label ON settings( label )
+	WHERE label IS NOT NULL;-- --
 
 CREATE TABLE statuses(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	label TEXT NOT NULL COLLATE NOCASE,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	label TEXT COLLATE NOCASE,
 	is_unique INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_unique IN ( 0, 1 ) ),
 	weight INTEGER NOT NULL DEFAULT 0,
 	status INTEGER NOT NULL DEFAULT 0
 );-- --
-CREATE UNIQUE INDEX idx_status_label ON statuses ( label );-- --
+CREATE UNIQUE INDEX idx_status_label ON statuses ( label )
+	WHERE label IS NOT NULL AND is_unique = 1;
 CREATE INDEX idx_status_unique ON statuses ( is_unique );-- --
 CREATE INDEX idx_status_weight ON statuses ( status, weight );-- --
 
@@ -76,7 +78,7 @@ CREATE INDEX idx_status_weight ON statuses ( status, weight );-- --
 
 -- List of languages
 CREATE TABLE languages (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	
 	-- Localized display label
 	label TEXT NOT NULL COLLATE NOCASE,
@@ -84,10 +86,10 @@ CREATE TABLE languages (
 	
 	-- English name
 	eng_name TEXT NOT NULL COLLATE NOCASE,
-	lang_group TEXT DEFAULT NULL COLLATE NOCASE,
+	lang_group TEXT COLLATE NOCASE,
 	
 	-- Referenced preset settings
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	
 	-- Custom settings serialized JSON
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
@@ -113,7 +115,7 @@ CREATE TABLE lang_meta(
 	is_default INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_default IN ( 0, 1 ) ),
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	CONSTRAINT fk_lang_meta
 		FOREIGN KEY ( language_id ) 
@@ -483,7 +485,7 @@ VALUES
 
 -- Regional content interface replacement data
 CREATE TABLE translations (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+	id INTEGER PRIMARY KEY AUTOINCREMENT, 
 	locale TEXT NOT NULL COLLATE NOCASE,
 	language_id INTEGER NOT NULL,
 	
@@ -494,7 +496,7 @@ CREATE TABLE translations (
 	is_default INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_default IN ( 0, 1 ) ),
 	
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_translation_language
@@ -550,7 +552,7 @@ CREATE VIEW locale_view AS SELECT
 		'is_locale_default', t.is_default,
 		'is_lang_default', m.is_default,
 		'settings', json_patch( s.info, t.settings_override ),
-		'definitions',  COALESCE( t.definitions, '{}' )
+		'definitions', json_patch( '{}', COALESCE( t.definitions, '{}' ) )
 	) AS locale_json
 	
 	FROM translations t
@@ -560,7 +562,7 @@ CREATE VIEW locale_view AS SELECT
 
 -- Localized date presentation formats
 CREATE TABLE date_formats(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+	id INTEGER PRIMARY KEY AUTOINCREMENT, 
 	language_id INTEGER NOT NULL,
 	locale_id INTEGER NOT NULL,
 	
@@ -585,7 +587,7 @@ CREATE INDEX idx_date_locales ON date_formats( locale_id );-- --
 
 -- Domain realms
 CREATE TABLE sites(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	label TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Domain name
@@ -598,7 +600,7 @@ CREATE TABLE sites(
 		CHECK ( is_active IN ( 0, 1 ) ),
 	is_maintenance INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_maintenance IN ( 0, 1 ) ),
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_site_settings
@@ -617,7 +619,7 @@ CREATE INDEX idx_site_settings ON sites ( setting_id )
 
 -- Mirrored sites
 CREATE TABLE site_aliases (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	site_id INTEGER NOT NULL,
 	basename TEXT NOT NULL COLLATE NOCASE,
 	
@@ -631,9 +633,9 @@ CREATE UNIQUE INDEX idx_site_alias ON site_aliases ( site_id, basename );-- --
 CREATE TABLE site_meta(
 	site_id INTEGER PRIMARY KEY,
 	url TEXT NOT NULL COLLATE NOCASE,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_site_meta
 		FOREIGN KEY ( site_id ) 
@@ -726,14 +728,14 @@ CREATE VIEW sites_enabled AS SELECT
 
 -- Users access
 CREATE TABLE users (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	username TEXT NOT NULL COLLATE NOCASE,
 	password TEXT NOT NULL,
 	
 	-- Normalized, lowercase, and stripped of spaces
 	user_clean TEXT NOT NULL COLLATE NOCASE,
 	
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_user_settings
@@ -751,15 +753,15 @@ CREATE TABLE user_meta(
 	uuid TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Anonymous token, other than username, when publicly referenced
-	reference TEXT DEFAULT NULL COLLATE NOCASE,
+	reference TEXT COLLATE NOCASE,
 	
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	is_enabled INTEGER NOT NULL DEFAULT 1 
 		CHECK ( is_enabled IN ( 0, 1 ) ),
 	langcode TEXT NOT NULL DEFAULT 'eng' COLLATE NOCASE,
 	tz_offset TEXT NOT NULL DEFAULT 'UTC',
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	CONSTRAINT fk_user_meta
 		FOREIGN KEY ( user_id ) 
@@ -805,14 +807,14 @@ CREATE VIRTUAL TABLE user_search
 
 -- Web form based logins (requires session)
 CREATE TABLE logins(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id INTEGER NOT NULL,
 	lookup TEXT NOT NULL COLLATE NOCASE,
 	is_active INTEGER DEFAULT 0 
 		CHECK ( is_active IN ( 0, 1 ) ),
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	hash TEXT DEFAULT NULL COLLATE NOCASE,
-	setting_id INTEGER DEFAULT NULL,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	hash TEXT COLLATE NOCASE,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_logins_user 
@@ -865,12 +867,12 @@ CREATE INDEX idx_login_blocked ON login_attempts ( blocked_until );
 
 -- Secondary providers E.G. identity, two-factor, permissions etc...
 CREATE TABLE providers( 
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	label TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Negotiation parameters for this specific provider
 	params TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_provider_settings
@@ -887,10 +889,10 @@ CREATE TABLE provider_meta(
 	uuid TEXT NOT NULL COLLATE NOCASE,
 	realm TEXT NOT NULL COLLATE NOCASE,
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	expires DATETIME DEFAULT NULL,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	expires TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_provider_meta
 		FOREIGN KEY ( provider_id ) 
@@ -935,9 +937,9 @@ END;-- --
 
 -- User roles, and permissions
 CREATE TABLE roles(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	label TEXT COLLATE NOCASE,
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_role_settings
@@ -952,9 +954,9 @@ CREATE INDEX idx_role_settings ON roles ( setting_id )
 
 CREATE TABLE role_meta(
 	role_id INTEGER NOT NULL,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_role_meta
 		FOREIGN KEY ( role_id ) 
@@ -975,8 +977,8 @@ CREATE INDEX idx_role_status ON role_meta( status )
 CREATE TABLE role_desc(
 	role_id INTEGER NOT NULL,
 	label TEXT NOT NULL COLLATE NOCASE,
-	description TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	description TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	PRIMARY KEY ( role_id, language_id ),
 	
@@ -1011,18 +1013,19 @@ CREATE TABLE user_roles(
 		ON DELETE CASCADE,
 	user_id INTEGER NOT NULL REFERENCES users ( id ) 
 		ON DELETE CASCADE,
-	created DATETIME DEFAULT CURRENT_TIMESTAMP
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	
+	PRIMARY KEY ( role_id, user_id )
 );-- --
-CREATE UNIQUE INDEX idx_user_roles ON user_roles ( role_id, user_id );-- --
 CREATE INDEX idx_user_role_assigned ON user_roles ( created );-- --
 
 
 -- Role action privileges
 CREATE TABLE role_permissions(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	role_id INTEGER NOT NULL,
-	provider_id INTEGER DEFAULT NULL,
-	setting_id INTEGER DEFAULT NULL,
+	provider_id INTEGER,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_permission_role 
@@ -1086,21 +1089,21 @@ GROUP BY ur.user_id;
 
 -- User authentication and activity metadata
 CREATE TABLE user_auth(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id INTEGER NOT NULL,
-	provider_id INTEGER DEFAULT NULL,
-	email TEXT DEFAULT NULL COLLATE NOCASE,
-	mobile_pin TEXT DEFAULT NULL COLLATE NOCASE,
+	provider_id INTEGER,
+	email TEXT COLLATE NOCASE,
+	mobile_pin TEXT COLLATE NOCASE,
 	
 	-- Activity
-	last_ip TEXT DEFAULT NULL COLLATE NOCASE,
-	last_ua TEXT DEFAULT NULL COLLATE NOCASE,
-	last_active DATETIME DEFAULT NULL,
-	last_login DATETIME DEFAULT NULL,
-	last_pass_change DATETIME DEFAULT NULL,
-	last_lockout DATETIME DEFAULT NULL,
-	last_session_base TEXT DEFAULT NULL,
-	last_session_id TEXT DEFAULT NULL,
+	last_ip TEXT COLLATE NOCASE,
+	last_ua TEXT COLLATE NOCASE,
+	last_active TIMESTAMP,
+	last_login TIMESTAMP,
+	last_pass_change TIMESTAMP,
+	last_lockout TIMESTAMP,
+	last_session_base TEXT,
+	last_session_id TEXT,
 	
 	-- Auth status,
 	is_approved INTEGER NOT NULL DEFAULT 0
@@ -1110,14 +1113,14 @@ CREATE TABLE user_auth(
 	
 	-- Authentication tries
 	failed_attempts INTEGER NOT NULL DEFAULT 0,
-	failed_last_start DATETIME DEFAULT NULL,
-	failed_last_attempt DATETIME DEFAULT NULL,
+	failed_last_start TIMESTAMP,
+	failed_last_attempt TIMESTAMP,
 	
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	expires DATETIME DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	expires TIMESTAMP,
 	
 	-- Per auth settings
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_auth_user 
@@ -1426,7 +1429,7 @@ END;-- --
 
 -- URL Routing and page handling
 CREATE TABLE route_markers(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	pattern TEXT NOT NULL COLLATE NOCASE,
 	replacement TEXT NOT NULL COLLATE NOCASE
 );-- --
@@ -1457,13 +1460,13 @@ VALUES
 
 -- Application handlers
 CREATE TABLE handlers(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	
 	-- Handler function/class
 	controller TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Content create/update/delete settings
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_handler_settings
@@ -1477,7 +1480,7 @@ CREATE INDEX idx_handler_settings ON handlers( setting_id )
 CREATE TABLE handler_meta(
 	handler_id INTEGER NOT NULL,
 	fixed_priority INTEGER NOT NULL DEFAULT 0,
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	CONSTRAINT fk_handler_meta
 		FOREIGN KEY ( handler_id )
@@ -1518,9 +1521,9 @@ CREATE VIEW handler_view AS SELECT
 
 -- Actions
 CREATE TABLE events (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	name TEXT NOT NULL COLLATE NOCASE,
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	-- Execution parameters
 	params TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
@@ -1548,7 +1551,7 @@ BEGIN
 END;-- --
 
 CREATE TABLE event_handlers(
-	event_id INTEGER DEFAULT NULL,
+	event_id INTEGER,
 	handler_id INTEGER NOT NULL,
 	priority INTEGER NOT NULL DEFAULT 0,
 	
@@ -1600,7 +1603,7 @@ CREATE VIEW event_handler_view AS SELECT
 	LEFT JOIN statuses u ON status = u.id;-- --
 
 CREATE TABLE request_events (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+	id INTEGER PRIMARY KEY AUTOINCREMENT, 
 	site_id INTEGER NOT NULL,
 	event_id INTEGER NOT NULL,
 	
@@ -1632,12 +1635,12 @@ CREATE INDEX idx_event_verb ON request_events ( verb );-- --
 
 -- Content sections and relationships
 CREATE TABLE workspaces (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	parent_id INTEGER DEFAULT NULL REFERENCES workspaces( id )
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	parent_id INTEGER REFERENCES workspaces( id )
 		ON DELETE SET NULL,
 	
 	-- Layouts, formatting, special permissions etc...
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_workspace_settings
@@ -1653,9 +1656,9 @@ CREATE INDEX idx_workspace_settings ON workspaces( setting_id )
 CREATE TABLE workspace_meta(
 	workspace_id INTEGER NOT NULL,
 	urn TEXT NOT NULL COLLATE NOCASE,
-	created DATETIME DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_workspace_meta
 		FOREIGN KEY ( workspace_id ) 
@@ -1677,8 +1680,8 @@ CREATE INDEX idx_workspace_status ON workspace_meta( status )
 CREATE TABLE workspace_desc (
 	workspace_id INTEGER NOT NULL,
 	title TEXT NOT NULL COLLATE NOCASE,
-	description TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	description TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_workspace_desc
 		FOREIGN KEY ( workspace_id ) 
@@ -1723,11 +1726,11 @@ CREATE UNIQUE INDEX idx_work_sites
 
 -- Site entry collections
 CREATE TABLE collections (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	workspace_id INTEGER NOT NULL,
 	
 	-- Items per page, rendering, themes etc...
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_collection_workspace
@@ -1753,9 +1756,9 @@ CREATE TABLE collection_meta (
 	-- Total items
 	entry_count INTEGER DEFAULT 0,
 	
-	created DATETIME DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_collection_meta
 		FOREIGN KEY ( collection_id ) 
@@ -1777,8 +1780,8 @@ CREATE INDEX idx_collection_status ON collection_meta( status )
 CREATE TABLE collection_desc (
 	collection_id INTEGER NOT NULL,
 	title TEXT NOT NULL COLLATE NOCASE,
-	description TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	description TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_collection_desc
 		FOREIGN KEY ( collection_id ) 
@@ -1811,7 +1814,7 @@ END;-- --
 
 -- Collection accept types
 CREATE TABLE accept (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	mime_type TEXT NOT NULL COLLATE NOCASE,
 	collection_id INTEGER NOT NULL,
 	
@@ -1828,10 +1831,10 @@ CREATE INDEX idx_accept_collection ON accept ( collection_id );-- --
 
 -- Collection types
 CREATE TABLE categories (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	parent_id INTEGER DEFAULT NULL REFERENCES categories( id ) 
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	parent_id INTEGER REFERENCES categories( id ) 
 		ON DELETE SET NULL,
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_category_settings
@@ -1847,10 +1850,10 @@ CREATE INDEX idx_category_settings ON categories ( setting_id )
 CREATE TABLE category_meta(
 	category_id INTEGER NOT NULL,
 	urn TEXT NOT NULL COLLATE NOCASE,
-	created DATETIME DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	sort_order INTEGER DEFAULT 0,
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	CONSTRAINT fk_category_meta
 		FOREIGN KEY ( category_id ) 
@@ -1871,8 +1874,8 @@ CREATE INDEX idx_category_sort ON category_meta ( sort_order );-- --
 CREATE TABLE category_desc (
 	category_id INTEGER NOT NULL,
 	term TEXT NOT NULL COLLATE NOCASE,
-	label TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	label TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_category_desc
 		FOREIGN KEY ( category_id ) 
@@ -1935,10 +1938,10 @@ END;-- --
 
 
 CREATE TABLE entry_types(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	-- Should be type, but "type" may cause issues
-	entry_type TEXT DEFAULT NULL COLLATE NOCASE,
-	setting_id INTEGER DEFAULT NULL,
+	entry_type TEXT COLLATE NOCASE,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 		
 	CONSTRAINT fk_entry_type_settings
@@ -1953,13 +1956,13 @@ CREATE INDEX idx_entry_type_settings ON entry_types ( setting_id )
 
 -- Collection entries
 CREATE TABLE entries (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	-- Optional direct parent
-	parent_id INTEGER DEFAULT NULL 
+	parent_id INTEGER 
 		REFERENCES entries ( id ) ON DELETE SET NULL,
 	type_id INTEGER NOT NULL,
 	
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_entry_type
@@ -1990,12 +1993,12 @@ CREATE TABLE entry_meta(
 	is_direct INTEGER NOT NULL DEFAULT 0 
 		CHECK ( is_direct IN ( 0, 1 ) ),
 	
-	created DATETIME DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-	published DATETIME DEFAULT NULL,
-	hierarchy TEXT DEFAULT NULL,
+	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	published DATETIME,
+	hierarchy TEXT,
 	sort_order INTEGER NOT NULL DEFAULT 0,
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	CONSTRAINT fk_entry_meta 
 		FOREIGN KEY ( entry_id )
@@ -2023,9 +2026,9 @@ CREATE TABLE entry_desc (
 	entry_id INTEGER NOT NULL,
 	title TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
 	slug TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
-	summary TEXT DEFAULT NULL COLLATE NOCASE,
-	rights TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	summary TEXT COLLATE NOCASE,
+	rights TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_entry_desc
 		FOREIGN KEY ( entry_id ) 
@@ -2051,10 +2054,10 @@ CREATE VIRTUAL TABLE entry_desc_search
 
 -- Revision history
 CREATE TABLE entry_content (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	entry_id INTEGER NOT NULL,
-	language_id INTEGER DEFAULT NULL,
-	created DATETIME DEFAULT CURRENT_TIMESTAMP,
+	language_id INTEGER,
+	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	
 	-- Content filtered and stripped of tags
 	plain TEXT DEFAULT '' COLLATE NOCASE,
@@ -2160,7 +2163,7 @@ CREATE UNIQUE INDEX idx_entry_collection ON
 CREATE TRIGGER entry_insert AFTER INSERT ON entries FOR EACH ROW
 BEGIN
 	INSERT INTO entry_meta( entry_id, urn ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
+		VALUES ( NEW.id, ( SELECT id FROM uuid_v7 ) );
 END;-- --
 
 -- Entry meta update
@@ -2168,7 +2171,7 @@ CREATE TRIGGER entry_update AFTER UPDATE ON entry_desc FOR EACH ROW
 BEGIN
 	-- Change last modified
 	UPDATE entry_meta SET updated = CURRENT_TIMESTAMP
-		WHERE entry_id = NEW.id;
+		WHERE entry_id = NEW.entry_id;
 END;-- --
 
 -- Latest revision
@@ -2176,7 +2179,7 @@ CREATE TRIGGER entry_content_insert AFTER INSERT ON entry_content
 FOR EACH ROW
 BEGIN
 	UPDATE entry_meta SET updated = CURRENT_TIMESTAMP
-		WHERE entry_id = NEW.id;
+		WHERE entry_id = NEW.entry_id;
 END;-- --
 
 
@@ -2200,10 +2203,10 @@ CREATE TABLE entry_sources (
 	entry_id INTEGER NOT NULL REFERENCES entries ( id ) 
 		ON DELETE CASCADE,
 	source_entry_id INTEGER NOT NULL REFERENCES entries ( id ) 
-		ON DELETE CASCADE
+		ON DELETE CASCADE,
+		
+	PRIMARY KEY ( node_id, source_node_id )
 );-- --
-CREATE UNIQUE INDEX idx_entry_source ON 
-	entry_sources ( entry_id, source_entry_id );-- --
 
 -- Hierarchy
 CREATE TRIGGER entry_parent AFTER INSERT ON entries FOR EACH ROW
@@ -2215,10 +2218,10 @@ END;-- --
 
 -- ATOM user profiles
 CREATE TABLE persons (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	urn TEXT DEFAULT NULL COLLATE NOCASE,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	urn TEXT COLLATE NOCASE,
 	user_id INTEGER NOT NULL,
-	status INTEGER DEFAULT NULL,
+	status INTEGER,
 	
 	CONSTRAINT fk_person_user
 		FOREIGN KEY ( user_id )
@@ -2239,10 +2242,10 @@ CREATE TABLE person_desc (
 	person_id INTEGER NOT NULL,
 	title TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
 	name TEXT NOT NULL COLLATE NOCASE,
-	uri TEXT DEFAULT NULL COLLATE NOCASE,
-	bio TEXT DEFAULT NULL COLLATE NOCASE,
-	contact TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	uri TEXT COLLATE NOCASE,
+	bio TEXT COLLATE NOCASE,
+	contact TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_eperson_desc
 		FOREIGN KEY ( person_id ) 
@@ -2296,13 +2299,13 @@ CREATE VIEW person_view AS SELECT
 
 -- Editor ownership and collaboration
 CREATE TABLE authors (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	entry_id INTEGER NOT NULL,
 	content_id INTEGER NOT NULL,
 	person_id INTEGER NOT NULL,
 	
 	-- Currently editing
-	checked_out INTEGER DEFAULT NULL,
+	checked_out INTEGER,
 	
 	CONSTRAINT fk_author_entry 
 		FOREIGN KEY ( entry_id )
@@ -2325,7 +2328,7 @@ CREATE INDEX idx_author_checked ON authors ( checked_out );-- --
 
 CREATE TABLE author_meta(
 	author_id INTEGER NOT NULL,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	sort_order INTEGER DEFAULT 0, 
 	
 	CONSTRAINT fk_author_meta 
@@ -2464,8 +2467,8 @@ END;-- --
 
 -- Content locations
 CREATE TABLE places(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	setting_id INTEGER DEFAULT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_place_settings
@@ -2500,9 +2503,9 @@ CREATE UNIQUE INDEX idx_place_map_geo ON
 -- Place metadata
 CREATE TABLE place_meta(
 	place_id INTEGER NOT NULL,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_place_meta
 		FOREIGN KEY ( place_id )
@@ -2524,7 +2527,7 @@ CREATE INDEX idx_place_status ON place_meta ( status )
 CREATE TABLE place_labels(
 	place_id INTEGER INTEGER NOT NULL,
 	label TEXT NOT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_lang_place
 		FOREIGN KEY ( place_id ) 
@@ -2665,7 +2668,7 @@ CREATE INDEX idx_coll_place_sort ON
 
 -- Uploaded media/attachments
 CREATE TABLE resources(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	
 	-- Path on disk
 	src TEXT NOT NULL COLLATE NOCASE,
@@ -2679,7 +2682,7 @@ CREATE TABLE resources(
 	
 	-- image/jpeg, video/ogg etc...
 	mime_type TEXT NOT NULL COLLATE NOCASE,
-	thumbnail TEXT DEFAULT NULL COLLATE NOCASE
+	thumbnail TEXT COLLATE NOCASE
 );-- --
 CREATE UNIQUE INDEX idx_resource_src ON resources( src );-- --
 CREATE INDEX idx_resource_mime ON resources( mime_type );-- --
@@ -2687,14 +2690,14 @@ CREATE INDEX idx_resource_hash ON resources( content_hash );-- --
 CREATE INDEX idx_resource_length ON resources( content_length );-- --
 
 CREATE TABLE resource_meta (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	resource_id INTEGER NOT NULL,
 	urn TEXT NOT NULL COLLATE NOCASE,
 	download_count INTEGER NOT NULL DEFAULT 0,
 	view_count INTEGER NOT NULL DEFAULT 0,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_resource_meta
 		FOREIGN KEY ( resource_id )
@@ -2726,10 +2729,10 @@ CREATE TABLE resource_labels(
 	resource_id INTEGER INTEGER NOT NULL,
 	
 	-- Alternate disk path reference
-	label_src TEXT DEFAULT NULL COLLATE NOCASE,
-	title TEXT DEFAULT NULL COLLATE NOCASE,
-	description TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	label_src TEXT COLLATE NOCASE,
+	title TEXT COLLATE NOCASE,
+	description TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_lang_resource
 		FOREIGN KEY ( resource_id ) 
@@ -2775,15 +2778,15 @@ CREATE INDEX idx_entry_resource_sort ON
 
 -- Indexed text
 CREATE TABLE phrases (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	entered TEXT NOT NULL COLLATE NOCASE
 );-- --
 
 CREATE TABLE phrase_meta (
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	phrase_id INTEGER NOT NULL,
-	metaphones TEXT DEFAULT NULL COLLATE NOCASE,
-	q_factor REAL DEFAULT NULL,
+	metaphones TEXT COLLATE NOCASE,
+	q_factor REAL,
 	
 	CONSTRAINT fk_phrase_meta
 		FOREIGN KEY ( phrase_id ) 
@@ -2801,23 +2804,23 @@ CREATE VIRTUAL TABLE phrase_search USING fts4( body, tokenize=unicode61 );-- --
 
 -- Content templates
 CREATE TABLE templates(
-	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
-	parent_id INTEGER DEFAULT NULL REFERENCES templates( id ) 
+	id INTEGER PRIMARY KEY AUTOINCREMENT, 
+	parent_id INTEGER REFERENCES templates( id ) 
 		ON DELETE CASCADE,
 	
 	-- File-based templates
-	create_src TEXT DEFAULT NULL,
-	edit_src TEXT DEFAULT NULL,
-	view_src TEXT DEFAULT NULL,
-	delete_src TEXT DEFAULT NULL,
+	create_src TEXT,
+	edit_src TEXT,
+	view_src TEXT,
+	delete_src TEXT,
 	
 	-- Stored HTML
-	create_template TEXT DEFAULT NULL COLLATE NOCASE, 
-	edit_template TEXT DEFAULT NULL COLLATE NOCASE, 
-	view_template TEXT DEFAULT NULL COLLATE NOCASE, 
-	delete_template TEXT DEFAULT NULL COLLATE NOCASE,
+	create_template TEXT COLLATE NOCASE, 
+	edit_template TEXT COLLATE NOCASE, 
+	view_template TEXT COLLATE NOCASE, 
+	delete_template TEXT COLLATE NOCASE,
 	
-	setting_id INTEGER DEFAULT NULL,
+	setting_id INTEGER,
 	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
 	
 	CONSTRAINT fk_template_settings
@@ -2840,9 +2843,9 @@ CREATE INDEX idx_template_settings ON templates ( setting_id )
 
 CREATE TABLE template_meta(
 	template_id INTEGER NOT NULL,
-	created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	status INTEGER DEFAULT NULL,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	status INTEGER,
 	
 	CONSTRAINT fk_template_meta
 		FOREIGN KEY ( template_id ) 
@@ -2863,8 +2866,8 @@ CREATE INDEX idx_template_status ON template_meta ( status )
 CREATE TABLE template_desc(
 	template_id INTEGER NOT NULL,
 	title TEXT NOT NULL COLLATE NOCASE,
-	description TEXT DEFAULT NULL COLLATE NOCASE,
-	language_id INTEGER DEFAULT NULL,
+	description TEXT COLLATE NOCASE,
+	language_id INTEGER,
 	
 	CONSTRAINT fk_template_meta
 		FOREIGN KEY ( template_id ) 
