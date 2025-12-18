@@ -748,6 +748,7 @@ CREATE INDEX idx_user_settings ON users ( setting_id )
 
 CREATE TABLE user_meta(
 	user_id INTEGER PRIMARY KEY,
+	uuid TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Anonymous token, other than username, when publicly referenced
 	reference TEXT DEFAULT NULL COLLATE NOCASE,
@@ -770,6 +771,8 @@ CREATE TABLE user_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
+CREATE UNIQUE INDEX idx_provider_uuid ON provider_meta( uuid )
+	WHERE uuid IS NOT NULL;-- --
 CREATE UNIQUE INDEX idx_user_ref ON user_meta ( reference )
 	WHERE reference IS NOT NULL;-- --
 CREATE INDEX idx_user_enabled ON user_meta ( is_enabled );
@@ -836,8 +839,8 @@ CREATE INDEX idx_login_settings ON logins ( setting_id )
 
 CREATE TRIGGER user_insert AFTER INSERT ON users FOR EACH ROW
 BEGIN
-	INSERT INTO user_meta( user_id, reference ) 
-		VALUES ( NEW.id, ( SELECT id FROM rnd ) );
+	INSERT INTO user_meta( user_id, uuid, reference ) 
+		VALUES ( NEW.id, ( SELECT id FROM uuid_v7 ), ( SELECT id FROM rnd ) );
 	INSERT INTO logins( user_id ) VALUES ( NEW.id );
 END;-- --
 
@@ -899,6 +902,8 @@ CREATE TABLE provider_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
+CREATE UNIQUE INDEX idx_provider_uuid ON provider_meta( uuid )
+	WHERE uuid IS NOT NULL;-- --
 CREATE INDEX idx_provider_sort ON provider_meta( sort_order );-- --
 CREATE INDEX idx_provider_realm ON provider_meta( realm );-- --
 CREATE INDEX idx_provider_created ON provider_meta( created );-- --
@@ -1258,14 +1263,15 @@ END;-- --
 -- SELECT * FROM login_view WHERE username = :username;
 CREATE VIEW login_view AS SELECT 
 	logins.id AS id,
-	logins.user_id AS user_id, 
-	users.uuid AS uuid, 
+	logins.user_id AS user_id,
 	logins.lookup AS lookup, 
 	logins.hash AS hash, 
-	logins.updated AS updated, 
-	um.reference AS reference,
+	logins.updated AS updated,
 	
+	um.uuid AS uuid,
+	um.reference AS reference,	
 	um.status AS status, 
+	
 	u.label AS status_label,
 	u.is_unique AS status_is_unique,
 	u.weight AS status_weight,
@@ -1288,15 +1294,18 @@ CREATE VIEW login_view AS SELECT
 -- Post-login user data
 -- Usage:
 -- SELECT * FROM user_auth_view WHERE username = :username;
-CREATE VIEW user_auth_view AS
-SELECT 
+CREATE VIEW user_auth_view AS SELECT 
 	l.id AS login_id,
 	l.user_id AS user_id,
 	l.lookup AS lookup, 
-	l.hash AS hash, 
+	l.hash AS hash,
+	
 	u.username AS username,
 	u.password AS password,
+	
+	um.uuid AS uuid,
 	um.reference AS reference,
+	
 	ua.is_approved AS is_approved,
 	ua.is_locked AS is_locked,
 	ua.expires AS expires,
@@ -1307,6 +1316,7 @@ SELECT
 	json_object(
 		'user', json_object(
 			'id', u.id,
+			'uuid', um.uuid,
 			'username', u.username,
 			'reference', um.reference,
 			'status', json_object(
