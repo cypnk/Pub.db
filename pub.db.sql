@@ -1044,6 +1044,8 @@ CREATE TABLE role_permissions(
 		ON DELETE SET NULL
 );-- --
 CREATE INDEX idx_permission_role ON role_permissions( role_id );-- --
+CREATE INDEX idx_permission_provider ON role_permissions( provider_id )
+		WHERE provider_id IS NOT NULL;-- --
 CREATE INDEX idx_permission_settings ON role_permissions ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
@@ -1074,8 +1076,7 @@ CREATE VIEW user_permission_view AS SELECT
 				WHERE pp.role_id = roles.id
 			), '[]' ),
 			
-			'settings', json_patch( pg.info roles.settings_override ),
-			
+			'settings', json_patch( pg.info roles.settings_override )
 		)
 	) AS roles_json
 FROM user_roles ur
