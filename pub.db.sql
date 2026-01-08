@@ -54,7 +54,7 @@ CREATE TABLE settings(
 	label TEXT COLLATE NOCASE,
 	
 	-- Serialized JSON
-	info TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE
+	info TEXT NOT NULL DEFAULT '{}'
 );-- --
 CREATE UNIQUE INDEX idx_settings_label ON settings( label )
 	WHERE label IS NOT NULL;-- --
@@ -62,15 +62,20 @@ CREATE UNIQUE INDEX idx_settings_label ON settings( label )
 CREATE TABLE statuses(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	label TEXT COLLATE NOCASE,
+	
 	is_unique INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_unique IN ( 0, 1 ) ),
+	is_shared INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_shared IN ( 0, 1 ) ),
+		
 	weight INTEGER NOT NULL DEFAULT 0,
-	status INTEGER NOT NULL DEFAULT 0
+	code_flag INTEGER NOT NULL DEFAULT 0
 );-- --
 CREATE UNIQUE INDEX idx_status_label ON statuses ( label )
-	WHERE label IS NOT NULL AND is_unique = 1;
+	WHERE label IS NOT NULL AND is_unique = 1;-- --
 CREATE INDEX idx_status_unique ON statuses ( is_unique );-- --
-CREATE INDEX idx_status_weight ON statuses ( status, weight );-- --
+CREATE INDEX idx_status_shared ON statuses ( is_shared );-- --
+CREATE INDEX idx_status_group ON statuses ( code_flag, weight );-- --
 
 
 
@@ -92,7 +97,7 @@ CREATE TABLE languages (
 	setting_id INTEGER,
 	
 	-- Custom settings serialized JSON
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_lang_settings
 		FOREIGN KEY ( setting_id ) 
@@ -160,10 +165,10 @@ INSERT INTO languages (
 ( 'cmn-bj', '北京话', 'Beijing Mandarin', 'zh' ),
 ( 'cmn-nm', '东北话', 'Northeastern Mandarin', 'zh' ),
 ( 'cmn-sw', '西南官话', 'Southwestern Mandarin', 'zh' ),
-( 'cmn-jl', '冀鲁官话', 'Ji–Lu Mandarin', 'zh' ),
+( 'cmn-jl', '冀鲁官话', 'Ji-Lu Mandarin', 'zh' ),
 ( 'cmn-jh', '江淮官话', 'Jianghuai Mandarin', 'zh' ),
 ( 'cmn-zy', '中原官话', 'Zhongyuan Mandarin', 'zh' ),
-( 'cmn-ly', '兰银官话', 'Lan–Yin Mandarin', 'zh' ),
+( 'cmn-ly', '兰银官话', 'Lan-Yin Mandarin', 'zh' ),
 ( 'dan', 'Dansk', 'Danish', 'da' ),
 ( 'deu', 'Deutsch', 'German', 'de' ),
 ( 'din', 'Thuɔŋjäŋ', 'Dinka', 'din' ),
@@ -195,7 +200,7 @@ INSERT INTO languages (
 ( 'jpn-hok', '北海道弁', 'Hokkaido Japanese', 'ja' ),
 ( 'jpn-toh', '東北弁', 'Tohoku Japanese', 'ja' ),
 ( 'jpn-okn', '沖縄方言', 'Okinawan Japanese', 'ja' ),
-( 'jav', 'ꦧꦱꦗꦮ', 'Javanese', 'jvn' ),
+( 'jav', 'ꦧꦱꦗꦮ', 'Javanese', 'jv' ),
 ( 'kat', 'ქართული', 'Georgian', 'ka' ),
 ( 'kan', 'ಕನ್ನಡ', 'Kannada', 'kn' ),
 ( 'kaz', 'Қазақ тілі', 'Kazakh', 'kk' ),
@@ -208,8 +213,8 @@ INSERT INTO languages (
 ( 'khm-bat', 'ភាសាខ្មែរបាត់ដំបង', 'Battambang Khmer', 'km' ),
 ( 'khm-lit', 'ភាសាខ្មែរ​សិល្បៈ', 'Literary Khmer', 'km' ),
 ( 'kir', 'Кыргыз', 'Kyrgyz', 'ky' ),
-( 'knn', 'ಕೊಂಕಣಿ', 'Konkani', 'knn' ),
-( 'kok', 'कोंकणी', 'Konkani', 'kok' ),
+( 'knn', 'ಕೊಂಕಣಿ', 'Konkani Goa', 'knn' ),
+( 'kok', 'कोंकणी', 'Konkani Karnataka', 'kok' ),
 ( 'kor', '한국어', 'Korean', 'ko' ),
 ( 'kor-jeju', '제주어', 'Jeju Korean', 'ko' ),
 ( 'kur', 'کوردی', 'Kurdish', 'ku' ),
@@ -231,10 +236,10 @@ INSERT INTO languages (
 ( 'ori', 'ଓଡ଼ିଆ', 'Oriya', 'or' ),
 ( 'pan', 'ਪੰਜਾਬੀ', 'Punjabi', 'pa' ),
 ( 'pan-sar', 'سرائیکی', 'Saraiki Punjabi', 'pa' ),
-( 'por', 'Português', 'Portuguese', 'pt' ),
-( 'por', 'Português Brasileiro', 'Portuguese', 'pt' ),
+( 'por', 'Português', 'Portuguese (Portugal)', 'pt' ),
+( 'por-br', 'Português Brasileiro', 'Portuguese (Brazil)', 'pt' ),
 ( 'pol', 'Polski', 'Polish', 'pl' ),
-( 'rom', '', 'Romany', 'rom' ),
+( 'rom', 'Romani čhib', 'Romany', 'rom' ),
 ( 'ron', 'Română', 'Romanian', 'ro' ),
 ( 'rus', 'Русский', 'Russian', 'ru' ),
 ( 'slk', 'Slovenčina', 'Slovak', 'sk' ),
@@ -247,8 +252,8 @@ INSERT INTO languages (
 ( 'swa', 'کِسْوَهِيلِ', 'Swahili', 'sw' ),
 ( 'syr', 'ܣܘܪܝܐܝܐ', 'Syriac', 'syr' ),
 ( 'tgk', 'Тоҷикӣ', 'Tajik', 'tg' ),
-( 'tgl', 'Tagálog', 'Tagalog', 'tg' ),
-( 'tgl-bik', 'Bikol', 'Bikol Tagalog', 'tg' ),
+( 'tgl', 'Tagálog', 'Tagalog', 'tl' ),
+( 'tgl-bik', 'Bikol', 'Bikol Tagalog', 'tl' ),
 ( 'tam', 'தமிழ்', 'Tamil', 'ta' ),
 ( 'tam-jaff', 'யாழ்ப்பாணம் தமிழ்', 'Jaffna Tamil', 'ta' ),
 ( 'tel', 'తెలుగు', 'Telugu', 'te'),
@@ -426,7 +431,8 @@ VALUES
 ( "pan", "pa" ), 
 ( "pol", "pol" ), 
 ( "pol", "pl" ), 
-( "por", "por" ), 
+( "por", "por" ),
+( "por", "por-br" ), 
 ( "por", "pt" ), 
 ( "rom", "rom" ), 
 ( "ron", "ron" ), 
@@ -490,14 +496,14 @@ CREATE TABLE translations (
 	language_id INTEGER NOT NULL,
 	
 	-- Replacement match patterns
-	definitions TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	definitions TEXT NOT NULL DEFAULT '{}',
 	
 	-- Default locale for the language
 	is_default INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_default IN ( 0, 1 ) ),
 	
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_translation_language
 		FOREIGN KEY ( language_id ) 
@@ -591,17 +597,20 @@ CREATE TABLE sites(
 	label TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Domain name
-	basename TEXT NOT NULL DEFAULT 'localhost' COLLATE NOCASE,
+	basename TEXT NOT NULL DEFAULT 'localhost',
+	basename_ascii TEXT NOT NULL DEFAULT 'localhost' COLLATE NOCASE
+		CHECK ( basename_ascii = lower( basename_ascii ) ),
 	
 	-- Relative path
-	basepath TEXT NOT NULL DEFAULT '/' COLLATE NOCASE,
+	basepath TEXT NOT NULL DEFAULT '/' COLLATE NOCASE
+		CHECK ( basepath LIKE '/%' ),
 	
 	is_active INTEGER NOT NULL DEFAULT 1
 		CHECK ( is_active IN ( 0, 1 ) ),
 	is_maintenance INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_maintenance IN ( 0, 1 ) ),
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_site_settings
 		FOREIGN KEY ( setting_id ) 
@@ -610,7 +619,7 @@ CREATE TABLE sites(
 );-- --
 CREATE UNIQUE INDEX idx_site_title ON sites ( label );-- --
 -- E.G.: example.com, portal = example.com/portal
-CREATE UNIQUE INDEX idx_site_uri ON sites ( basename, basepath );-- --
+CREATE UNIQUE INDEX idx_site_uri ON sites ( basename_ascii, basepath );-- --
 CREATE INDEX idx_site_basename ON sites ( basename );-- --
 CREATE INDEX idx_site_basepath ON sites( basepath );-- --
 CREATE INDEX idx_site_active ON sites( is_active );-- --
@@ -736,7 +745,7 @@ CREATE TABLE users (
 	user_clean TEXT NOT NULL COLLATE NOCASE,
 	
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_user_settings
 		FOREIGN KEY ( setting_id ) 
@@ -773,7 +782,7 @@ CREATE TABLE user_meta(
 		REFERENCES statuses ( id )
 		ON DELETE SET NULL
 );-- --
-CREATE UNIQUE INDEX idx_provider_uuid ON provider_meta( uuid )
+CREATE UNIQUE INDEX idx_user_uuid ON user_meta( uuid )
 	WHERE uuid IS NOT NULL;-- --
 CREATE UNIQUE INDEX idx_user_ref ON user_meta ( reference )
 	WHERE reference IS NOT NULL;-- --
@@ -815,7 +824,7 @@ CREATE TABLE logins(
 	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	hash TEXT COLLATE NOCASE,
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_logins_user 
 		FOREIGN KEY ( user_id ) 
@@ -871,9 +880,9 @@ CREATE TABLE providers(
 	label TEXT NOT NULL COLLATE NOCASE,
 	
 	-- Negotiation parameters for this specific provider
-	params TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	params TEXT NOT NULL DEFAULT '{}',
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_provider_settings
 		FOREIGN KEY ( setting_id ) 
@@ -940,7 +949,7 @@ CREATE TABLE roles(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	label TEXT COLLATE NOCASE,
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_role_settings
 		FOREIGN KEY ( setting_id ) 
@@ -1026,7 +1035,7 @@ CREATE TABLE role_permissions(
 	role_id INTEGER NOT NULL,
 	provider_id INTEGER,
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_permission_role 
 		FOREIGN KEY ( role_id ) 
@@ -1054,7 +1063,7 @@ CREATE VIEW user_permission_view AS SELECT
 	ur.user_id AS id,
 	
 	-- Provider JSON array
-	json_group_array( rp.provider_id ) AS providers,
+	json_group_array( DISTINCT rp.provider_id ) AS providers,
 	
 	-- Role JSON array
 	json_group_array(
@@ -1076,7 +1085,7 @@ CREATE VIEW user_permission_view AS SELECT
 				WHERE pp.role_id = roles.id
 			), '[]' ),
 			
-			'settings', json_patch( pg.info roles.settings_override )
+			'settings', json_patch( pg.info, roles.settings_override )
 		)
 	) AS roles_json
 FROM user_roles ur
@@ -1084,7 +1093,7 @@ JOIN roles ON ur.role_id = roles.id
 LEFT JOIN role_desc rd ON roles.id = rd.role_id 
 LEFT JOIN settings pg ON roles.setting_id = pg.id
 LEFT JOIN role_permissions rp ON roles.id = rp.role_id
-GROUP BY ur.user_id;
+GROUP BY ur.user_id;-- --
 
 
 
@@ -1122,7 +1131,7 @@ CREATE TABLE user_auth(
 	
 	-- Per auth settings
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_auth_user 
 		FOREIGN KEY ( user_id ) 
@@ -1468,7 +1477,7 @@ CREATE TABLE handlers(
 	
 	-- Content create/update/delete settings
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_handler_settings
 		FOREIGN KEY ( setting_id ) 
@@ -1527,7 +1536,7 @@ CREATE TABLE events (
 	status INTEGER,
 	
 	-- Execution parameters
-	params TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	params TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_event_status
 		FOREIGN KEY ( status ) 
@@ -1642,7 +1651,7 @@ CREATE TABLE workspaces (
 	
 	-- Layouts, formatting, special permissions etc...
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_workspace_settings
 		FOREIGN KEY ( setting_id ) 
@@ -1732,7 +1741,7 @@ CREATE TABLE collections (
 	
 	-- Items per page, rendering, themes etc...
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_collection_workspace
 		FOREIGN KEY ( workspace_id ) 
@@ -1836,7 +1845,7 @@ CREATE TABLE categories (
 	parent_id INTEGER REFERENCES categories( id ) 
 		ON DELETE SET NULL,
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_category_settings
 		FOREIGN KEY ( setting_id ) 
@@ -1943,7 +1952,7 @@ CREATE TABLE entry_types(
 	-- Should be type, but "type" may cause issues
 	entry_type TEXT COLLATE NOCASE,
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 		
 	CONSTRAINT fk_entry_type_settings
 		FOREIGN KEY ( setting_id ) 
@@ -1964,7 +1973,7 @@ CREATE TABLE entries (
 	type_id INTEGER NOT NULL,
 	
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_entry_type
 		FOREIGN KEY ( type_id ) 
@@ -2470,7 +2479,7 @@ END;-- --
 CREATE TABLE places(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_place_settings
 		FOREIGN KEY ( setting_id ) 
@@ -2822,7 +2831,7 @@ CREATE TABLE templates(
 	delete_template TEXT COLLATE NOCASE,
 	
 	setting_id INTEGER,
-	settings_override TEXT NOT NULL DEFAULT '{}' COLLATE NOCASE,
+	settings_override TEXT NOT NULL DEFAULT '{}',
 	
 	CONSTRAINT fk_template_settings
 		FOREIGN KEY ( setting_id ) 
