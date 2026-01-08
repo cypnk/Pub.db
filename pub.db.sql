@@ -630,14 +630,17 @@ CREATE INDEX idx_site_settings ON sites ( setting_id )
 CREATE TABLE site_aliases (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	site_id INTEGER NOT NULL,
-	basename TEXT NOT NULL COLLATE NOCASE,
+	basename TEXT NOT NULL,
+	basename_ascii TEXT NOT NULL COLLATE NOCASE
+		CHECK ( basename_ascii = lower( basename_ascii ) ),
 	
 	CONSTRAINT fk_alias_site 
 		FOREIGN KEY ( site_id ) 
 		REFERENCES sites ( id )
 		ON DELETE CASCADE
 );-- --
-CREATE UNIQUE INDEX idx_site_alias ON site_aliases ( site_id, basename );-- --
+CREATE UNIQUE INDEX idx_site_alias ON site_aliases ( site_id, basename_ascii );-- --
+CREATE UNIQUE INDEX idx_site_alias_base ON site_aliases( basename );-- --
 
 CREATE TABLE site_meta(
 	site_id INTEGER PRIMARY KEY,
@@ -667,7 +670,7 @@ CREATE VIRTUAL TABLE path_search
 USING fts5(
 	url,
 	content='site_meta',
-	content_rowid='rowid',
+	content_rowid='site_id',
 	tokenize='unicode61 tokenchars=-_ separators=/*'
 );-- --
 
@@ -709,7 +712,7 @@ CREATE VIEW sites_enabled AS SELECT
 	s.basepath AS basepath, 
 	s.is_active AS is_active,
 	s.is_maintenance AS is_maintenance,
-	GROUP_CONCAT( DISTINCT a.basename ) AS base_alias,
+	GROUP_CONCAT( DISTINCT a.basename ORDER BY a.basename ) AS base_alias,
 	sm.url AS url,
 	sm.created AS created,
 	sm.updated AS updated,
@@ -741,7 +744,7 @@ CREATE VIEW sites_enabled AS SELECT
 -- Users access
 CREATE TABLE users (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	username TEXT NOT NULL COLLATE NOCASE,
+	username TEXT NOT NULL,
 	password TEXT NOT NULL,
 	
 	-- Normalized, lowercase, and stripped of spaces
@@ -1498,7 +1501,9 @@ CREATE INDEX idx_handler_settings ON handlers( setting_id )
 
 CREATE TABLE handler_meta(
 	handler_id INTEGER NOT NULL,
-	fixed_priority INTEGER NOT NULL DEFAULT 0,
+	priority INTEGER NOT NULL DEFAULT 0,
+	is_fixed_priority INTEGER NOT NULL DEFAULT 0
+		CHECK ( is_fixed_priority IN ( 0, 1 ) ),
 	status INTEGER,
 	
 	CONSTRAINT fk_handler_meta
@@ -1512,6 +1517,8 @@ CREATE TABLE handler_meta(
 		ON DELETE SET NULL
 );-- --
 CREATE INDEX idx_handler_meta ON handler_meta( handler_id );-- --
+CREATE INDEX idx_handler_priority ON handler_meta ( priority );-- --
+CREATE INDEX idx_handler_fixed_priority ON handler_meta ( is_fixed_priority );-- --
 CREATE INDEX idx_handler_status ON handler_meta( status )
 	WHERE status IS NOT NULL;-- --
 
@@ -1527,7 +1534,8 @@ CREATE VIEW handler_view AS SELECT
 	s.info AS settings, 
 	h.settings_override AS settings_override,
 	hm.status AS status,
-	hm.fixed_priority AS fixed_priority,
+	hm.priority AS priority,
+	hm.is_fixed_priority AS is_fixed_priority,
 	u.label AS status_label,
 	u.is_unique AS status_is_unique,
 	u.weight AS status_weight,
