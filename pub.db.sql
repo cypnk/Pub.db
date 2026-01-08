@@ -664,9 +664,12 @@ CREATE INDEX idx_site_status ON site_meta ( status )
 
 -- Site and content path searching
 CREATE VIRTUAL TABLE path_search 
-	USING fts4( 
-		url, tokenize=unicode61 "tokenchars=-_" "separators=/*" 
-	);-- --
+USING fts5(
+	url,
+	content='site_meta',
+	content_rowid='rowid',
+	tokenize='unicode61 tokenchars=-_ separators=/*'
+);-- --
 
 
 CREATE TRIGGER site_insert AFTER INSERT ON sites FOR EACH ROW
@@ -811,7 +814,13 @@ CREATE INDEX idx_user_field_name ON user_fields ( field_name );-- --
 
 -- User search
 CREATE VIRTUAL TABLE user_search 
-	USING fts4( username, tokenize=unicode61 );-- --
+USING fts5(
+	username,
+	user_clean,
+	content='users',
+	content_rowid='id',
+	tokenize='unicode61'
+);-- --
 
 
 -- Web form based logins (requires session)
@@ -1905,7 +1914,13 @@ CREATE INDEX idx_category_language ON category_desc ( language_id )
 
 -- Content category searching
 CREATE VIRTUAL TABLE category_search 
-	USING fts4( content, tokenize=unicode61 );-- --
+USING fts5(
+	term,
+	label,
+	content='category_desc',
+	content_rowid='rowid',
+	tokenize='unicode61'
+);-- --
 
 -- New category, generate UUID
 CREATE TRIGGER category_insert AFTER INSERT ON categories FOR EACH ROW 
@@ -2060,7 +2075,14 @@ CREATE INDEX idx_entry_language ON entry_desc ( language_id )
 
 -- Entry description and title searching
 CREATE VIRTUAL TABLE entry_desc_search 
-	USING fts4( content, tokenize=unicode61 );-- --
+USING fts5(
+	title,
+	slug,
+	summary,
+	content='entry_desc',
+	content_rowid='rowid',
+	tokenize='unicode61'
+);-- --
 
 -- Revision history
 CREATE TABLE entry_content (
@@ -2099,7 +2121,12 @@ CREATE INDEX idx_entry_content_language ON
 
 -- Entry content body searching
 CREATE VIRTUAL TABLE entry_content_search 
-	USING fts4( content, tokenize=unicode61 );-- --
+USING fts5(
+	plain,
+	content='entry_content',
+	content_rowid='id',
+	tokenize='unicode61'
+);-- --
 
 
 
@@ -2277,8 +2304,15 @@ CREATE INDEX idx_person_language ON person_desc ( language_id )
 	WHERE language_id IS NOT NULL;-- --
 
 -- Bio, name, and title search
-CREATE VIRTUAL TABLE person_search 
-	USING fts4( profile, tokenize=unicode61 );-- --
+CREATE VIRTUAL TABLE person_search
+USING fts5(
+	title,
+	name,
+	bio,
+	content='person_desc',
+	content_rowid='rowid',
+	tokenize='unicode61'
+);-- --
 
 CREATE TRIGGER person_insert AFTER INSERT ON persons FOR EACH ROW
 BEGIN
@@ -2556,7 +2590,13 @@ CREATE INDEX idx_place_label_lang ON place_labels ( language_id )
 
 -- Location label searching
 CREATE VIRTUAL TABLE place_search 
-	USING fts4( content, tokenize=unicode61 );-- --
+USING fts5(
+	place,
+	label,
+	content='place_labels',
+	content_rowid='rowid',
+	tokenize='unicode61'
+);-- --
 
 CREATE TRIGGER place_insert AFTER INSERT ON places FOR EACH ROW
 BEGIN
@@ -2760,7 +2800,14 @@ CREATE INDEX idx_resource_name ON resource_labels( label_src );-- --
 CREATE INDEX idx_resource_label_lang ON resource_labels ( language_id ) 
 	WHERE language_id IS NOT NULL;-- --
 
-CREATE VIRTUAL TABLE resource_search USING fts4( body, tokenize=unicode61 );-- --
+CREATE VIRTUAL TABLE resource_search
+USING fts5(
+	title,
+	description,
+	content='resource_labels',
+	content_rowid='rowid',
+	tokenize='unicode61'
+);-- --
 
 
 -- Attachments
@@ -2808,7 +2855,13 @@ CREATE INDEX idx_phrase_q ON phrase_meta ( q_factor )
 	WHERE q_factor IS NOT NULL;-- --
 
 -- Text similarity searching
-CREATE VIRTUAL TABLE phrase_search USING fts4( body, tokenize=unicode61 );-- --
+CREATE VIRTUAL TABLE phrase_search
+USING fts5(
+	metaphones,
+	content='phrase_meta',
+	content_rowid='id',
+	tokenize='unicode61'
+);-- --
 
 
 
