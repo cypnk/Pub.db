@@ -43,7 +43,8 @@ CREATE TABLE versions (
 	installed TEXT NOT NULL,
 	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );-- --
-CREATE UNIQUE INDEX idx_versions_installed ON versions ( created );-- --
+CREATE UNIQUE INDEX idx_versions_installed ON versions ( installed );-- --
+CREATE INDEX idx_versions_created ON versions ( created );-- --
 
 
 -- Core information
