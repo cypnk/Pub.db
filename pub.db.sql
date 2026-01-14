@@ -68,6 +68,8 @@ CREATE TABLE statuses(
 		CHECK ( is_unique IN ( 0, 1 ) ),
 	is_shared INTEGER NOT NULL DEFAULT 0
 		CHECK ( is_shared IN ( 0, 1 ) ),
+	is_onoff INTEGER NOT NULL DEFAULT 1
+		CHECK ( is_onoff IN ( 0, 1 ) ),
 		
 	weight INTEGER NOT NULL DEFAULT 0,
 	code_flag INTEGER NOT NULL DEFAULT 0
@@ -76,6 +78,7 @@ CREATE UNIQUE INDEX idx_status_label ON statuses ( label )
 	WHERE label IS NOT NULL AND is_unique = 1;-- --
 CREATE INDEX idx_status_unique ON statuses ( is_unique );-- --
 CREATE INDEX idx_status_shared ON statuses ( is_shared );-- --
+CREATE INDEX idx_status_onoff ON statuses ( is_onoff );-- --
 CREATE INDEX idx_status_group ON statuses ( code_flag, weight );-- --
 
 
