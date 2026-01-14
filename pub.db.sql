@@ -627,6 +627,7 @@ CREATE UNIQUE INDEX idx_site_uri ON sites ( basename_ascii, basepath );-- --
 CREATE INDEX idx_site_basename ON sites ( basename );-- --
 CREATE INDEX idx_site_basepath ON sites( basepath );-- --
 CREATE INDEX idx_site_active ON sites( is_active );-- --
+CREATE INDEX idx_site_maint ON sites( is_maintenance );-- --
 CREATE INDEX idx_site_settings ON sites ( setting_id )
 	WHERE setting_id IS NOT NULL;-- --
 
