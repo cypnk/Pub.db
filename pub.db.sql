@@ -1034,8 +1034,7 @@ CREATE TABLE role_desc(
 );-- --
 CREATE INDEX idx_role_desc ON role_desc ( role_id );-- --
 CREATE INDEX idx_role_name ON role_desc ( label );-- --
-CREATE INDEX idx_role_lang ON role_desc ( language_id )
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_role_lang ON role_desc ( language_id );-- --
 
 CREATE TRIGGER role_insert AFTER INSERT ON roles FOR EACH ROW
 BEGIN
@@ -1945,9 +1944,11 @@ CREATE INDEX idx_workspace_status ON workspace_meta( status )
 
 CREATE TABLE workspace_desc (
 	workspace_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	title TEXT NOT NULL COLLATE NOCASE,
 	description TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( workspace_id, language_id ),
 	
 	CONSTRAINT fk_workspace_desc
 		FOREIGN KEY ( workspace_id ) 
@@ -1961,8 +1962,7 @@ CREATE TABLE workspace_desc (
 );-- --
 CREATE INDEX idx_workspace_desc ON workspace_desc ( workspace_id );-- --
 CREATE INDEX idx_workspace_title ON workspace_desc ( title );-- --
-CREATE INDEX idx_workspace_language ON workspace_desc ( language_id )
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_workspace_language ON workspace_desc ( language_id );-- --
 
 
 -- New workspace, generate UUID and set meta
@@ -2045,9 +2045,11 @@ CREATE INDEX idx_collection_status ON collection_meta( status )
 
 CREATE TABLE collection_desc (
 	collection_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	title TEXT NOT NULL COLLATE NOCASE,
 	description TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( collection_id, language_id ),
 	
 	CONSTRAINT fk_collection_desc
 		FOREIGN KEY ( collection_id ) 
@@ -2061,8 +2063,7 @@ CREATE TABLE collection_desc (
 );-- --
 CREATE INDEX idx_collection_desc ON collection_desc ( collection_id );-- --
 CREATE INDEX idx_collection_title ON collection_desc ( title );-- --
-CREATE INDEX idx_collection_language ON collection_desc ( language_id )
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_collection_language ON collection_desc ( language_id );-- --
 
 -- New collection, generate UUID
 CREATE TRIGGER collection_insert AFTER INSERT ON collections FOR EACH ROW 
@@ -2139,9 +2140,11 @@ CREATE INDEX idx_category_sort ON category_meta ( sort_order );-- --
 
 CREATE TABLE category_desc (
 	category_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL, 
 	term TEXT NOT NULL COLLATE NOCASE,
 	label TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( category_id, language_id ),
 	
 	CONSTRAINT fk_category_desc
 		FOREIGN KEY ( category_id ) 
@@ -2156,8 +2159,7 @@ CREATE TABLE category_desc (
 CREATE INDEX idx_category_desc ON category_desc ( category_id );-- --
 CREATE INDEX idx_category_term ON category_desc ( term );-- --
 CREATE INDEX idx_category_label ON category_desc ( label );-- --
-CREATE INDEX idx_category_language ON category_desc ( language_id )
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_category_language ON category_desc ( language_id );-- --
 
 -- Content category searching
 CREATE VIRTUAL TABLE category_search 
@@ -2296,11 +2298,13 @@ CREATE INDEX idx_entry_status ON entry_meta ( status )
 
 CREATE TABLE entry_desc (
 	entry_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	title TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
 	slug TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
 	summary TEXT COLLATE NOCASE,
 	rights TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( entry_id, language_id ),
 	
 	CONSTRAINT fk_entry_desc
 		FOREIGN KEY ( entry_id ) 
@@ -2317,8 +2321,7 @@ CREATE INDEX idx_entry_title ON entry_desc ( title )
 	WHERE title IS NOT '';-- --
 CREATE INDEX idx_entry_slug ON entry_desc ( slug )
 	WHERE slug IS NOT '';-- --
-CREATE INDEX idx_entry_language ON entry_desc ( language_id )
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_entry_language ON entry_desc ( language_id );-- --
 
 -- Entry description and title searching
 CREATE VIRTUAL TABLE entry_desc_search 
@@ -2364,7 +2367,7 @@ CREATE TABLE entry_content (
 CREATE INDEX idx_entry_content_sort ON 
 	entry_content ( created DESC, entry_id );-- --
 CREATE INDEX idx_entry_content_language ON 
-	entry_content ( language_id );-- --
+	entry_content ( language_id ) WHERE language_id IS NOT NULL;-- --
 
 -- Entry content body searching
 CREATE VIRTUAL TABLE entry_content_search 
@@ -2524,12 +2527,14 @@ CREATE INDEX idx_persons_status ON persons ( status )
 -- Region/locale specific profile content
 CREATE TABLE person_desc (
 	person_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	title TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
 	name TEXT NOT NULL COLLATE NOCASE,
 	uri TEXT COLLATE NOCASE,
 	bio TEXT COLLATE NOCASE,
 	contact TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( person_id, language_id ),
 	
 	CONSTRAINT fk_eperson_desc
 		FOREIGN KEY ( person_id ) 
@@ -2547,8 +2552,7 @@ CREATE INDEX idx_person_title ON person_desc ( title )
 	WHERE title IS NOT '';-- --
 CREATE INDEX idx_person_contact ON person_desc ( contact )
 	WHERE contact IS NOT NULL;-- --
-CREATE INDEX idx_person_language ON person_desc ( language_id )
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_person_language ON person_desc ( language_id );-- --
 
 -- Bio, name, and title search
 CREATE VIRTUAL TABLE person_search
@@ -2641,18 +2645,18 @@ BEGIN
 		FROM (
 		SELECT ' {' || 
 			-- Person info
-			'"id" : '	|| pa.person_id	|| ', '	|| 
-			'"urn" : "'	|| pd.urn	|| '", ' || 
-			'"name" : "'	|| pd.name	|| '", ' || 
-			'"title" : "'	|| pd.title	|| '", ' || 
-			'"lang_id" : '	|| pd.lang_id	|| ', ' || 
-			'"contact" : "'	|| 
+			'"id" : '		|| pa.person_id	|| ', '	|| 
+			'"urn" : "'		|| pd.urn	|| '", ' || 
+			'"name" : "'		|| pd.name	|| '", ' || 
+			'"title" : "'		|| pd.title	|| '", ' || 
+			'"language_id" : '	|| pd.language_id	|| ', ' || 
+			'"contact" : "'		|| 
 				COALESCE( pd.contact, '' ) || '", ' || 
 			
 			-- Author metadata
-			'"updated" : "'	|| am.updated	|| '", ' || 
-			'"sort" : '	|| am.sort_order|| ', ' || 
-			'"status" : '	|| p.status	|| ', ' || 
+			'"updated" : "'		|| am.updated	|| '", ' || 
+			'"sort" : '		|| am.sort_order|| ', ' || 
+			'"status" : '		|| p.status	|| ', ' || 
 			
 			-- User detail for additional info (Roles etc..)
 			'"user_id" : ' || p.user_id || 
@@ -2685,19 +2689,19 @@ BEGIN
 		
 		FROM (
 		SELECT ' {' || 
-			'"id" : '	|| pa.person_id	|| ', '	|| 
-			'"urn" : "'	|| pd.urn	|| '", ' || 
-			'"name" : "'	|| pd.name	|| '", ' || 
-			'"title" : "'	|| pd.title	|| '", ' || 
-			'"lang_id" : '	|| pd.lang_id	|| ', ' || 
-			'"contact" : "'	|| 
+			'"id" : '		|| pa.person_id	|| ', '	|| 
+			'"urn" : "'		|| pd.urn	|| '", ' || 
+			'"name" : "'		|| pd.name	|| '", ' || 
+			'"title" : "'		|| pd.title	|| '", ' || 
+			'"language_id" : '	|| pd.language_id	|| ', ' || 
+			'"contact" : "'		|| 
 				COALESCE( pd.contact, '' ) || '", ' || 
 			
-			'"updated" : "'	|| am.updated	|| '", ' || 
-			'"sort" : '	|| am.sort_order|| ', ' || 
-			'"status" : '	|| p.status	|| ', ' || 
+			'"updated" : "'		|| am.updated	|| '", ' || 
+			'"sort" : '		|| am.sort_order|| ', ' || 
+			'"status" : '		|| p.status	|| ', ' || 
 			
-			'"user_id" : ' || p.user_id || 
+			'"user_id" : '		|| p.user_id || 
 		' }' AS selection 
 		
 		FROM authors pa
@@ -2724,19 +2728,19 @@ BEGIN
 		
 		FROM (
 		SELECT ' {' || 
-			'"id" : '	|| pa.person_id	|| ', '	|| 
-			'"urn" : "'	|| pd.urn	|| '", ' || 
-			'"name" : "'	|| pd.name	|| '", ' || 
-			'"title" : "'	|| pd.title	|| '", ' || 
-			'"lang_id" : '	|| pd.lang_id	|| ', ' || 
-			'"contact" : "'	|| 
+			'"id" : '		|| pa.person_id	|| ', '	|| 
+			'"urn" : "'		|| pd.urn	|| '", ' || 
+			'"name" : "'		|| pd.name	|| '", ' || 
+			'"title" : "'		|| pd.title	|| '", ' || 
+			'"language_id" : '	|| pd.language_id	|| ', ' || 
+			'"contact" : "'		|| 
 				COALESCE( pd.contact, '' ) || '", ' || 
 			
-			'"updated" : "'	|| am.updated	|| '", ' || 
-			'"sort" : '	|| am.sort_order|| ', ' || 
-			'"status" : '	|| p.status	|| ', ' || 
+			'"updated" : "'		|| am.updated	|| '", ' || 
+			'"sort" : '		|| am.sort_order|| ', ' || 
+			'"status" : '		|| p.status	|| ', ' || 
 			
-			'"user_id" : '	|| p.user_id || 
+			'"user_id" : '		|| p.user_id || 
 		' }' AS selection
 		
 		FROM authors pa
@@ -2816,9 +2820,11 @@ CREATE INDEX idx_place_status ON place_meta ( status )
 
 -- Region/locale specific place names
 CREATE TABLE place_labels(
-	place_id INTEGER INTEGER NOT NULL,
+	place_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	label TEXT NOT NULL COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( place_id, language_id ),
 	
 	CONSTRAINT fk_lang_place
 		FOREIGN KEY ( place_id ) 
@@ -2832,8 +2838,7 @@ CREATE TABLE place_labels(
 );-- --
 CREATE UNIQUE INDEX idx_place ON place_labels ( place_id, label );-- --
 CREATE INDEX idx_place_label ON place_labels ( label );-- --
-CREATE INDEX idx_place_label_lang ON place_labels ( language_id ) 
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_place_label_lang ON place_labels ( language_id );-- --
 
 -- Location label searching
 CREATE VIRTUAL TABLE place_search 
@@ -3023,13 +3028,15 @@ END;-- --
 
 
 CREATE TABLE resource_labels(
-	resource_id INTEGER INTEGER NOT NULL,
+	resource_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	
 	-- Alternate disk path reference
 	label_src TEXT COLLATE NOCASE,
 	title TEXT COLLATE NOCASE,
 	description TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( resource_id, language_id ),
 	
 	CONSTRAINT fk_lang_resource
 		FOREIGN KEY ( resource_id ) 
@@ -3044,8 +3051,7 @@ CREATE TABLE resource_labels(
 CREATE UNIQUE INDEX idx_resource_label ON resource_labels ( resource_id, label_src )
 	WHERE label_src IS NOT NULL;-- --
 CREATE INDEX idx_resource_name ON resource_labels( label_src );-- --
-CREATE INDEX idx_resource_label_lang ON resource_labels ( language_id ) 
-	WHERE language_id IS NOT NULL;-- --
+CREATE INDEX idx_resource_label_lang ON resource_labels ( language_id );-- --
 
 CREATE VIRTUAL TABLE resource_search
 USING fts5(
@@ -3175,9 +3181,11 @@ CREATE INDEX idx_template_status ON template_meta ( status )
 
 CREATE TABLE template_desc(
 	template_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	title TEXT NOT NULL COLLATE NOCASE,
 	description TEXT COLLATE NOCASE,
-	language_id INTEGER,
+	
+	PRIMARY KEY ( template_id, language_id ),
 	
 	CONSTRAINT fk_template_meta
 		FOREIGN KEY ( template_id ) 
@@ -3240,114 +3248,164 @@ CREATE TABLE author_templates(
 -- Category
 CREATE VIEW category_view AS
 SELECT
-	categories.id AS category_id,
-	categories.parent_id AS parent_id,
-	category_meta.urn AS urn,
-	category_meta.created AS created,
-	category_meta.updated AS updated,
-	category_meta.sort_order AS sort_order,
-	COALESCE( category_meta.status, 0 ) AS status,
+	c.id AS category_id,
+	c.parent_id AS parent_id,
+	cm.urn AS urn,
+	cm.created AS created,
+	cm.updated AS updated,
+	cm.sort_order AS sort_order,
+	COALESCE( cm.status, 0 ) AS status,
 	
 	json_object(
-		'id', categories.id,
-		'parent_id', COALESCE( categories.parent_id, 0 ),
-		'urn', category_meta.urn,
-		'created', category_meta.created,
-		'updated', category_meta.updated,
-		'sort_order', category_meta.sort_order,
-		'status', COALESCE( category_meta.status, 0 )
+		'id', c.id,
+		'parent_id', COALESCE( c.parent_id, 0 ),
+		'urn', cm.urn,
+		'created', cm.created,
+		'updated', cm.updated,
+		'sort_order', cm.sort_order,
+		'status', json_object(
+			'id', cs.id,
+			'label', cs.label,
+			'is_unique', cs.is_unique,
+			'is_shared', cs.is_shared,
+			'is_onoff', cs.is_onoff,
+			'weight', cs.weight,
+			'code_flag', cs.code_flag,
+			'settings', json_patch( COALESCE( css.info, '{}' ), cs.settings_override )
+		)
 	) AS category_json
-FROM categories
-LEFT JOIN category_meta ON categories.id = category_meta.category_id;
+FROM categories c
+LEFT JOIN category_meta cm ON c.id = cm.category_id
+LEFT JOIN statuses cs ON cm.status = cs.id
+LEFT JOIN settings css ON cs.setting_id ON css.id;
 
 -- Collection
 -- Usage:
 -- SELECT * FROM collection_view WHERE sites.basename = :basename
 -- SELECT * FROM collection_view WHERE sites.id = :site_id
 CREATE VIEW collection_view AS SELECT
-	collections.id AS id,
-	sites.id AS site_id,
-	sites.title AS site_title,
-	sites.basename AS basename,
-	sites.basepath AS basepath,
-	sites.is_active AS site_active,
-	sites.is_maintenance AS site_maintenance,
+	c.id AS id,
+	s.id AS site_id,
+	s.title AS site_title,
+	s.basename AS basename,
+	s.basepath AS basepath,
+	s.is_active AS site_active,
+	s.is_maintenance AS site_maintenance,
 	
-	workspaces.id AS workspace_id,
-	collection_meta.category_count AS category_count,
-	collection_meta.entry_count AS entry_count,
+	w.id AS workspace_id,
+	cm.category_count AS category_count,
+	cm.entry_count AS entry_count,
+	COALESCE( cm.status, 0 ) AS status,
 	
 	json_object(
-		'id', collections.id,
-		'urn', collection_meta.urn,
-		'category_count', collection_meta.category_count,
-		'entry_count', collection_meta.entry_count,
-		'site_title', sites.title,
-		'basename', sites.basename,
-		'basepath', sites.basepath,
-		'site_active', sites.is_active,
-		'site_maintenance', sites.is_maintenance,
-		'settings', json_patch( settings.info, collections.settings_override ),
+		'id', c.id,
+		'urn', cm.urn,
+		'category_count', cm.category_count,
+		'entry_count', cm.entry_count,
 		
-		-- Collection accept types
-		'accept', IFNULL( ( 
-			SELECT json_group_array(
-				 json_object(
-					 'id', accept.id,
-					 'mime_type', accept.mime_type,
-					 'collection_id', accept.collection_id
-				 )
+		'site', json_object(
+			'id', s.id,
+			'title', s.title,
+			'basename', s.basename,
+			'basepath', s.basepath,
+			'active', s.is_active,
+			'maintenance', s.is_maintenance
+		),
+		
+		'settings', json_patch( COALESCE( st.info, '{}' ), c.settings_override ),
+		
+		-- Accept types
+		'accept', COALESCE( (
+			SELECT json_group_array( acc_json ) FROM (
+				SELECT DISTINCT json_object(
+					'id', a.id,
+					'mime_type', a.mime_type,
+					'collection_id', a.collection_id
+				) AS acc_json
+				FROM accept a
+				WHERE a.collection_id = c.id
+				ORDER BY a.id
 			)
-			FROM accept
-			WHERE accept.collection_id = collections.id 
 		), '[]' ),
-	
-		-- Collection categories
-		'categories', IFNULL( (
-			SELECT json_group_array( category_json )
+		
+		-- Categories
+		'categories', COALESCE( (
+			SELECT json_group_array( cat_json ) FROM (
+				SELECT DISTINCT category_view.category_json AS cat_json
 				FROM category_view
-				INNER JOIN category_collections ON 
-					category_view.category_id = category_collections.category_id 
-				WHERE category_collections.collection_id = collections.id
-		), '[]' )
+				JOIN category_collections cc
+					ON category_view.category_id = cc.category_id
+				WHERE cc.collection_id = c.id
+				ORDER BY category_view.category_id
+			)
+		), '[]' ), 
+		
+		'status', json_object(
+			'id', cs.id,
+			'label', cs.label,
+			'is_unique', cs.is_unique,
+			'is_shared', cs.is_shared,
+			'is_onoff', cs.is_onoff,
+			'weight', cs.weight,
+			'code_flag', cs.code_flag,
+			'settings', json_patch( COALESCE( css.info, '{}' ), cs.settings_override )
+		)
 	) AS collection_json
-	
-FROM collections
-INNER JOIN site_workspaces ON 
-	collections.workspace_id = site_workspaces.workspace_id
-INNER JOIN sites ON site_workspaces.site_id = sites.id
-LEFT JOIN collection_meta ON collections.id = collection_meta.collection_id
-LEFT JOIN settings ON collections.setting_id = settings.id
-LEFT JOIN workspaces ON site_workspaces.workspace_id = workspaces.id;
+
+FROM collections c
+INNER JOIN site_workspaces sw ON c.workspace_id = sw.workspace_id
+INNER JOIN sites s ON sw.site_id = s.id
+LEFT JOIN collection_meta cm ON c.id = cm.collection_id
+LEFT JOIN settings st ON c.setting_id = st.id
+LEFT JOIN statuses cs ON cm.status = cs.id 
+LEFT JOIN settings css ON cs.setting_id = css.id
+LEFT JOIN workspaces w ON sw.workspace_id = w.id;
 -- --
 
 -- Workspace/region view
 -- Usage:
 -- SELECT * FROM workspace_view WHERE workspaces.site_id = ::site_id
 CREATE VIEW workspace_view AS SELECT
-	workspaces.id AS id,
-	workspaces.site_id AS site_id,
-	COALESCE( workspace_meta.status, 0 ) AS status,
+	w.id AS id,
+	w.site_id AS site_id,
+	COALESCE( wm.status, 0 ) AS status,
 	
 	json_object(
-		'id', workspaces.id,
-		'site_id', workspaces.site_id,
-		'urn', workspace_meta.urn,
-		'setting_id', workspaces.setting_id,
+		'id', w.id,
+		'site_id', w.site_id,
+		'urn', wm.urn,
+		'setting_id', w.setting_id,
 		
-		'settings', json_patch( settings.info, workspaces.settings_override ),
-		'created', workspace_meta.created,
-		'updated', workspace_meta.updated,
-		'status', COALESCE( workspace_meta.status, 0 ),
-		'collections', IFNULL( (
-			SELECT json_group_array( collection_json )
-			FROM collection_view
-			WHERE collection_view.workspace_id = workspaces.id
+		'settings', json_patch( COALESCE( ws.info, '{}' ), w.settings_override ),
+		'created', wm.created,
+		'updated', wm.updated,
+		'status', json_object(
+			'id', st.id,
+			'label', st.label,
+			'is_unique', st.is_unique,
+			'is_shared', st.is_shared,
+			'is_onoff', st.is_onoff,
+			'weight', st.weight,
+			'code_flag', st.code_flag,
+			'settings', json_patch( COALESCE( sst.info, '{}' ), st.settings_override )
+		),
+		
+		'collections', COALESCE( (
+			SELECT json_group_array( col_json )
+			FROM ( 
+				SELECT DISTINCT  cv.collection_json AS col_json
+				
+				FROM collection_view cv
+				WHERE cv.workspace_id = w.id
+				ORDER BY cv.id
+			)
 		), '[]' )
 	) AS workspace_json
-FROM workspaces
-LEFT JOIN workspace_meta ON workspaces.id = workspace_meta.workspace_id
-LEFT JOIN settings ON workspaces.setting_id = settings.id;
+FROM workspaces w
+LEFT JOIN workspace_meta wm ON w.id = wm.workspace_id
+LEFT JOIN settings ws ON w.setting_id = ws.id
+LEFT JOIN statuses st ON wm.status = st.id
+LEFT JOIN settings sst ON st.setting_id = sst.id;
 -- --
 
 -- Service document view for a site URL
@@ -3355,49 +3413,49 @@ LEFT JOIN settings ON workspaces.setting_id = settings.id;
 -- SELECT * FROM service_view WHERE basename = :basename
 -- SELECT * FROM service_view WHERE is_active = :is_active
 CREATE VIEW service_view AS SELECT
-	sites.id AS id,
-	sites.basename AS basename,
-	sites.basepath AS basepath,
-	sites.is_active AS is_active,
-	sites.is_maintenance AS is_maintenance,
+	s.id AS id,
+	s.basename AS basename,
+	s.basepath AS basepath,
+	s.is_active AS is_active,
+	s.is_maintenance AS is_maintenance,
 	
 	json_object( 
-		'id', sites.id,
-		'title', sites.title,
-		'basename', sites.basename,
-		'basepath', sites.basepath,
-		'is_active', sites.is_active,
-		'is_maintenance', sites.is_maintenance,
-		'settings', json_patch( settings.info, sites.settings_override ),
-		'workspaces', IFNULL( (
-			SELECT json_group_array( workspace_json )
-			FROM workspace_view
-			WHERE workspace_view.site_id = sites.id
-		), '[]' )
+		'id', s.id,
+		'title', s.title,
+		'basename', s.basename,
+		'basepath', s.basepath,
+		'is_active', s.is_active,
+		'is_maintenance', s.is_maintenance,
+		
+		'settings', json_patch( COALESCE( ss.info, '{}' ), s.settings_override ),
+		
+		'workspaces', COALESCE( (
+			SELECT json_group_array( ws_json ) FROM (
+				SELECT DISTINCT wv.workspace_json AS ws_json
+				FROM workspace_view wv
+				WHERE wv.site_id = s.id
+				ORDER BY wv.id
+			)
+		), '[]' ), 
+		
+		'status', json_object(
+			'id', st.id,
+			'label', st.label,
+			'is_unique', st.is_unique,
+			'is_shared', st.is_shared,
+			'is_onoff', st.is_onoff,
+			'weight', st.weight,
+			'code_flag', st.code_flag,
+			'settings', json_patch( COALESCE( sst.info, '{}' ), st.settings_override )
+		),
 	) service_json
-FROM sites
-INNER JOIN site_workspaces ON sites.id = site_workspaces.site_id
-LEFT JOIN settings ON sites.setting_id = settings.id;
--- --
+FROM sites s
+INNER JOIN site_workspaces sw ON s.id = sw.site_id
+LEFT JOIN settings ss ON s.setting_id = ss.id
+LEFT JOIN statuses st ON s.status = st.id
+LEFT JOIN settings sst ON st.setting_id = sst.id;
 
--- Overview
-CREATE VIEW site_view AS SELECT
-	collection_id,
-	site_id,
-	site_title,
-	site_basename,
-	site_basepath,
-	workspace_id,
-	
-	json_extract( collection_json, '$.urn' ) AS urn,
-	json_extract( collection_json, '$.entry_count' ) AS entry_count,
-	json_extract( collection_json, '$.category_count' ) AS category_count,
-	json_extract( collection_json, '$.settings' ) AS settings,
-	json_extract( collection_json, '$.settings_override' ) AS settings_override,
-	json_extract( collection_json, '$.accept') AS accept,
-	json_extract( collection_json, '$.categories') AS categories
-FROM collection_view
-ORDER BY site_title, collection_id;
+
 
 
 
