@@ -27,7 +27,7 @@ CREATE VIEW uuid AS SELECT lower(
 ) AS id;-- --
 
 CREATE VIEW uuid_v7 AS SELECT lower(
-	printf( '%012x', strftime( '%s','now' ) * 1000 ), 1, 12 ) || '-' ||
+	printf( '%012x', strftime( '%s','now' ) * 1000 ) || '-' ||
 	'7' || substr( hex( randomblob( 2 ) ), 2 ) || '-' ||
 	substr( '89AB', 1 + ( abs( random() ) % 4 ), 1 ) ||
 	substr( hex( randomblob( 2 ) ), 2 ) || '-' ||
@@ -72,7 +72,9 @@ CREATE TABLE statuses(
 		CHECK ( is_onoff IN ( 0, 1 ) ),
 		
 	weight INTEGER NOT NULL DEFAULT 0,
-	code_flag INTEGER NOT NULL DEFAULT 0
+	code_flag INTEGER NOT NULL DEFAULT 0, 
+	
+	CHECK ( is_unique = 0 OR label IS NOT NULL )
 );-- --
 CREATE UNIQUE INDEX idx_status_label ON statuses ( label )
 	WHERE label IS NOT NULL AND is_unique = 1;-- --
@@ -151,7 +153,8 @@ CREATE TRIGGER lang_default_update BEFORE UPDATE ON lang_meta FOR EACH ROW
 WHEN NEW.is_default <> 0 AND NEW.is_default IS NOT NULL
 BEGIN
 	UPDATE lang_meta SET is_default = 0 
-		WHERE is_default IS NOT 0 AND language_id IS NOT NEW.id;
+		WHERE is_default IS NOT 0 AND language_id IS NOT NEW.id
+		AND OLD.is_default IS NOT 0;
 END;-- --
 
 INSERT INTO languages (
@@ -703,6 +706,13 @@ BEGIN
 		WHERE site_id = NEW.id;
 END;-- --
 
+CREATE TRIGGER sites_base_insert AFTER INSERT ON sites FOR EACH ROW
+WHEN NEW.basename_ascii IS NULL OR NEW.basename_ascii = '' 
+BEGIN
+	UPDATE sites SET basename_ascii = lower( NEW.basename ) 
+		WHERE id = NEW.id;
+END;-- --
+
 
 -- Search by domain alias
 -- Usage: 
@@ -868,7 +878,11 @@ CREATE INDEX idx_login_settings ON logins ( setting_id )
 CREATE TRIGGER user_insert AFTER INSERT ON users FOR EACH ROW
 BEGIN
 	INSERT INTO user_meta( user_id, uuid, reference ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid_v7 ), ( SELECT id FROM rnd ) );
+		VALUES ( 
+			NEW.id, 
+			( SELECT id FROM uuid_v7 LIMIT 1 ), 
+			( SELECT id FROM rnd LIMIT 1 ) 
+		);
 	INSERT INTO logins( user_id ) VALUES ( NEW.id );
 END;-- --
 
@@ -947,7 +961,7 @@ BEGIN
 		provider_id, uuid, realm
 	) VALUES ( 
 		NEW.id, 
-		( SELECT id FROM uuid ), 
+		( SELECT id FROM uuid LIMIT 1 ), 
 		COALESCE( json_extract( NEW.params, '$.realm' ), 'unknown' ) 
 	);
 END;-- --
@@ -1002,9 +1016,9 @@ CREATE INDEX idx_role_status ON role_meta( status )
 
 CREATE TABLE role_desc(
 	role_id INTEGER NOT NULL,
+	language_id INTEGER NOT NULL,
 	label TEXT NOT NULL COLLATE NOCASE,
 	description TEXT COLLATE NOCASE,
-	language_id INTEGER,
 	
 	PRIMARY KEY ( role_id, language_id ),
 	
@@ -1080,38 +1094,53 @@ CREATE VIEW user_permission_view AS SELECT
 	ur.user_id AS id,
 	
 	-- Provider JSON array
-	json_group_array( DISTINCT rp.provider_id ) AS providers,
+	(
+		SELECT json_group_array( provider_id ) FROM (
+			SELECT DISTINCT rp.provider_id 
+			FROM role_permissions rp
+			WHERE rp.role_id IN (
+				SELECT role_id FROM user_roles WHERE user_id = ur.user_id
+			)
+			AND rp.provider_id IS NOT NULL
+			ORDER BY rp.provider_id
+		)
+	) AS providers,
 	
 	-- Role JSON array
-	json_group_array(
-		json_object(
-			'role_id', roles.id,
-			'role_label', COALESCE( rd.label, roles.label, 'role_id_' || roles.id ),
-			
-			-- Permissions JSON array
-			'permissions', IFNULL( (
-				SELECT json_group_array(
-					json_object(
-						'permission_id', pp.id,
-						'provider_id', pp.provider_id,
-						'settings', json_patch( sp.info, pp.settings_override )
+	COALESCE( (
+		SELECT json_group_array( role_json ) FROM ( 
+			SELECT DISTINCT json_object(
+				'role_id', r.id,
+				
+				-- Permissions array
+				'permissions', COALESCE( (
+					SELECT json_group_array( perm_json )
+					FROM (
+						SELECT DISTINCT json_object(
+							'permission_id', pp.id,
+							'provider_id', pp.provider_id,
+							'settings', json_patch( COALESCE( sp.info, '{}' ), pp.settings_override )
+						) AS perm_json
+						FROM role_permissions pp
+						LEFT JOIN settings sp ON pp.setting_id = sp.id
+						WHERE pp.role_id = r.id
 					)
-				)
-				FROM role_permissions pp
-				LEFT JOIN settings sp ON pp.setting_id = sp.id
-				WHERE pp.role_id = roles.id
-			), '[]' ),
+				), '[]' ),
+				
+				-- Role settings
+				'settings', json_patch( COALESCE( pg.info, '{}' ), r.settings_override )
+			) AS role_json
 			
-			'settings', json_patch( pg.info, roles.settings_override )
+			FROM user_roles urb
+			JOIN roles r ON urb.role_id = r.id
+			LEFT JOIN settings pg ON r.setting_id = pg.id
+			WHERE urb.user_id = ur.user_id
+			ORDER BY r.id
 		)
-	) AS roles_json
-FROM user_roles ur
-JOIN roles ON ur.role_id = roles.id
-LEFT JOIN role_desc rd ON roles.id = rd.role_id 
-LEFT JOIN settings pg ON roles.setting_id = pg.id
-LEFT JOIN role_permissions rp ON roles.id = rp.role_id
-GROUP BY ur.user_id;-- --
+	), '[]' ) AS roles_json
 
+FROM user_roles ura
+GROUP BY ura.user_id;-- --
 
 
 -- User authentication and activity metadata
@@ -1225,10 +1254,10 @@ CREATE TRIGGER user_last_login INSTEAD OF
 	UPDATE OF last_login ON auth_activity
 BEGIN 
 	UPDATE user_auth SET 
-		last_ip			= NEW.last_ip,
-		last_ua			= NEW.last_ua,
-		last_session_base	= NEW.last_session_base,
-		last_session_id		= NEW.last_session_id,
+		last_ip			= COALESCE( NEW.last_ip, last_ip ),
+		last_ua			= COALESCE( NEW.last_ua, last_ua ),
+		last_session_base	= COALESCE( NEW.last_session_base, session_base ),
+		last_session_id		= COALESCE( NEW.last_session_id, last_session_id ),
 		last_login		= CURRENT_TIMESTAMP, 
 		last_active		= CURRENT_TIMESTAMP,
 		failed_attempts		= 0
@@ -1239,10 +1268,10 @@ CREATE TRIGGER user_last_ip INSTEAD OF
 	UPDATE OF last_ip ON auth_activity
 BEGIN 
 	UPDATE user_auth SET 
-		last_ip			= NEW.last_ip, 
-		last_ua			= NEW.last_ua,
-		last_session_base	= NEW.last_session_base,
-		last_session_id		= NEW.last_session_id,
+		last_ip			= COALESCE( NEW.last_ip, last_ip ),
+		last_ua			= COALESCE( NEW.last_ua, last_ua ),
+		last_session_base	= COALESCE( NEW.last_session_base, session_base ),
+		last_session_id		= COALESCE( NEW.last_session_id, last_session_id ),
 		last_active		= CURRENT_TIMESTAMP 
 		WHERE id = OLD.id;
 END;-- --
@@ -1268,10 +1297,10 @@ CREATE TRIGGER user_failed_last_attempt INSTEAD OF
 	UPDATE OF failed_last_attempt ON auth_activity
 BEGIN 
 	UPDATE user_auth SET 
-		last_ip			= NEW.last_ip, 
-		last_ua			= NEW.last_ua,
-		last_session_base	= NEW.last_session_base,
-		last_session_id		= NEW.last_session_id,
+		last_ip			= COALESCE( NEW.last_ip, last_ip ),
+		last_ua			= COALESCE( NEW.last_ua, last_ua ),
+		last_session_base	= COALESCE( NEW.last_session_base, session_base ),
+		last_session_id		= COALESCE( NEW.last_session_id, last_session_id ),
 		last_active		= CURRENT_TIMESTAMP,
 		failed_last_attempt	= CURRENT_TIMESTAMP, 
 		failed_attempts		= ( failed_attempts + 1 ) 
@@ -1321,6 +1350,7 @@ CREATE VIEW login_view AS SELECT
 	LEFT JOIN settings ts ON ua.setting_id = ts.id
 	LEFT JOIN settings ls ON logins.setting_id = ls.id
 	LEFT JOIN statuses u ON um.status = u.id;-- --
+
 -- Post-login user data
 -- Usage:
 -- SELECT * FROM user_auth_view WHERE username = :username;
@@ -1352,13 +1382,14 @@ CREATE VIEW user_auth_view AS SELECT
 			'status', json_object(
 				'id', st.id,
 				'label', st.label,
-				'description', st.description,
+				'is_shared', st.is_shared,
+				'is_onoff', st.is_onoff,
 				'is_unique', st.is_unique,
 				'weight', st.weight,
-				'value', st.value,
-				'settings', json_patch( ss.info, st.settings_override )
+				'code_flag', st.code_flag,
+				'settings', json_patch( COALESCE( ss.info, '{}' ), st.settings_override )
 			),
-			'settings', json_patch( us.info, u.settings_override )
+			'settings', json_patch( COALESCE( us.info, '{}' ), u.settings_override )
 		),
 		'auth', json_object(
 			'is_approved', ua.is_approved,
@@ -1375,51 +1406,55 @@ CREATE VIEW user_auth_view AS SELECT
 			'failed_last_attempt', ua.failed_last_attempt,
 			'created', ua.created,
 			'expires', ua.expires,
-			'settings', json_patch( ts.info, ua.settings_override )
+			'settings', json_patch( COALESCE( ts.info, '{}' ), ua.settings_override )
 		),
 		'login', json_object(
 			'lookup', l.lookup,
 			'hash', l.hash,
 			'updated', l.updated,
-			'settings', json_patch( ls.info, l.settings_override )
+			'settings', json_patch( COALESCE( ls.info, '{}' ), l.settings_override )
 		),
-		'roles', IFNULL( (
-				SELECT json_group_array(
-					json_object(
+		'roles', COALESCE( (
+			SELECT json_group_array( role_json ) FROM ( 
+				SELECT DISTINCT json_object(
 					'role_id', r.id,
-					'label', rd.label,
-					'description', rd.description,
-					'settings', json_patch( pg.info, r.settings_override ),
-					'permissions', (
-						SELECT json_group_array(
-							json_object(
+					'settings', json_patch( COALESCE( pg.info, '{}' ), r.settings_override ),
+					
+					-- Permissions array
+					'permissions', COALESCE( (
+						SELECT json_group_array( perm_json ) FROM (
+							SELECT DISTINCT json_object(
 								'permission_id', rp.id,
 								'provider_id', rp.provider_id,
-								'provider', (
+								
+								-- Provider object
+								'provider', ( 
 									SELECT json_object(
 										'id', p.id,
 										'label', p.label,
 										'params', p.params,
-										'settings', json_patch( ps.info, p.settings_override )
+										'settings', json_patch( COALESCE( ps.info, '{}' ), p.settings_override )
 									)
 									FROM providers p
 									LEFT JOIN settings ps ON p.setting_id = ps.id
-										WHERE p.id = rp.provider_id
+									WHERE p.id = rp.provider_id
 								),
-								'settings', json_patch( sp.info, rp.settings_override )
-							)
-						)
-						FROM role_permissions rp
-						LEFT JOIN settings sp ON rp.setting_id = sp.id
+								'settings', json_patch( COALESCE( sp.info, '{}' ), rp.settings_override )
+							) AS perm_json
+							
+							FROM role_permissions rp
+							LEFT JOIN settings sp ON rp.setting_id = sp.id
 							WHERE rp.role_id = r.id
-					)
-				)
-			)
-			FROM user_roles ur
-			JOIN roles r ON ur.role_id = r.id
-			LEFT JOIN role_desc rd ON r.id = rd.role_id
+						) 
+					), '[]' )
+				) AS role_json
+					
+				FROM user_roles ur
+				JOIN roles r ON ur.role_id = r.id
 				LEFT JOIN settings pg ON r.setting_id = pg.id
 				WHERE ur.user_id = u.id
+				ORDER BY r.id
+			) 
 		), '[]' )
 	) AS login_json
 
@@ -1432,7 +1467,126 @@ LEFT JOIN settings ts ON ua.setting_id = ts.id
 LEFT JOIN settings ls ON l.setting_id = ls.id
 LEFT JOIN statuses st ON um.status = st.id
 LEFT JOIN settings ss ON st.setting_id = ss.id;-- --
+
+
+CREATE VIEW user_full_view AS
+SELECT
+	u.id AS user_id,
+	u.username AS username,
+	u.password AS password,
+	um.uuid AS uuid,
+	um.reference AS reference,
 	
+	-- Consolidated JSON profile
+	json_object(
+		'user', json_object(
+			'id', u.id,
+			'uuid', um.uuid,
+			'username', u.username,
+			'reference', um.reference,
+			'status', json_object(
+				'id', st.id,
+				'label', st.label,
+				'is_shared', st.is_shared,
+				'is_onoff', st.is_onoff,
+				'is_unique', st.is_unique,
+				'weight', st.weight,
+				'code_flag', st.code_flag,
+				'settings', json_patch( COALESCE( ss.info, '{}' ), st.settings_override )
+			),
+			'settings', json_patch( COALESCE( us.info, '{}' ), u.settings_override )
+		),
+		
+		'auth', json_object(
+			'is_approved', ua.is_approved,
+			'is_locked', ua.is_locked,
+			'email', ua.email,
+			'mobile_pin', ua.mobile_pin,
+			'last_ip', ua.last_ip,
+			'last_ua', ua.last_ua,
+			'last_active', ua.last_active,
+			'last_login', ua.last_login,
+			'last_lockout', ua.last_lockout,
+			'last_pass_change', ua.last_pass_change,
+			'failed_attempts', ua.failed_attempts,
+			'failed_last_start', ua.failed_last_start,
+			'failed_last_attempt', ua.failed_last_attempt,
+			'created', ua.created,
+			'expires', ua.expires,
+			'settings', json_patch( COALESCE( ts.info, '{}' ), ua.settings_override )
+		),
+		
+		'login', json_object(
+			'lookup', l.lookup,
+			'hash', l.hash,
+			'updated', l.updated,
+			'settings', json_patch( COALESCE( ls.info, '{}' ), l.settings_override )
+		),
+		
+		'providers', (
+			SELECT json_group_array( provider_id ) FROM (
+				SELECT DISTINCT rp.provider_id
+				FROM role_permissions rp
+				WHERE rp.role_id IN (
+					SELECT role_id FROM user_roles WHERE user_id = u.id
+				)
+				AND rp.provider_id IS NOT NULL
+				ORDER BY rp.provider_id
+			)
+		),
+		
+		'roles', COALESCE( (
+			SELECT json_group_array( role_json ) FROM (
+				SELECT DISTINCT json_object(
+					'role_id', r.id,
+					'settings', json_patch( COALESCE( pg.info, '{}' ), r.settings_override ),
+					
+					'permissions', COALESCE( (
+						SELECT json_group_array( perm_json ) FROM (
+							SELECT DISTINCT json_object(
+								'permission_id', rp.id,
+								'provider_id', rp.provider_id,
+								
+								'provider', (
+									SELECT json_object(
+										'id', p.id,
+										'label', p.label,
+										'params', p.params,
+										'settings', json_patch( COALESCE( ps.info, '{}' ), p.settings_override )
+									)
+									FROM providers p
+									LEFT JOIN settings ps ON p.setting_id = ps.id
+									WHERE p.id = rp.provider_id
+								),
+								
+								'settings', json_patch( COALESCE( sp.info, '{}' ), rp.settings_override )
+							) AS perm_json
+							
+							FROM role_permissions rp
+							LEFT JOIN settings sp ON rp.setting_id = sp.id
+							WHERE rp.role_id = r.id
+						)
+					), '[]' ) ) AS role_json
+				
+				FROM user_roles urb
+				JOIN roles r ON urb.role_id = r.id
+				LEFT JOIN settings pg ON r.setting_id = pg.id
+				WHERE urb.user_id = u.id
+				ORDER BY r.id
+			)
+		), '[]' ) 
+	) AS profile_json
+	
+FROM users u
+JOIN user_meta um ON u.id = um.user_id
+LEFT JOIN user_auth ua ON u.id = ua.user_id
+LEFT JOIN logins l ON u.id = l.user_id
+LEFT JOIN settings us ON u.setting_id = us.id
+LEFT JOIN settings ts ON ua.setting_id = ts.id
+LEFT JOIN settings ls ON l.setting_id = ls.id
+LEFT JOIN statuses st ON um.status = st.id
+LEFT JOIN settings ss ON st.setting_id = ss.id;-- --
+
 
 
 -- Login regenerate. Not intended for SELECT
@@ -1444,7 +1598,7 @@ SELECT user_id, lookup FROM logins;-- --
 -- Reset the lookup string to force logout a user
 CREATE TRIGGER user_logout INSTEAD OF UPDATE OF lookup ON logout_view
 BEGIN
-	UPDATE logins SET lookup = ( SELECT id FROM rnd ), 
+	UPDATE logins SET lookup = ( SELECT id FROM rnd LIMIT 1 ), 
 		updated = CURRENT_TIMESTAMP
 		WHERE user_id = NEW.user_id;
 END;-- --
@@ -1483,6 +1637,12 @@ VALUES
 ( ':find', '(?<find>[\\\\pL\\\\pN\\\\s\\\\-_,\\\\.\\\\:\\\\+]{2,255})' ),
 ( ':redir', '(?<redir>[a-z_\\\\:\\\\/\\\\-\\\\d\\\\.\\\\s]{1,120})' ),
 ( ':lang', '(?<lang>[a-z]{2,3})(?:-(?<locale>[a-z]{2,8}))?' );-- --
+
+CREATE VIEW route_resolver_view AS SELECT
+	rm.pattern AS marker,
+	rm.replacement AS regex
+FROM route_markers rm;-- --
+
 
 
 -- Application handlers
@@ -1533,23 +1693,59 @@ BEGIN
 END;-- --
 
 -- Handler scope
-CREATE VIEW handler_view AS SELECT 
-	h.id AS id, 
+CREATE VIEW handler_view AS SELECT
+	h.id AS id,
 	h.controller AS controller,
-	s.info AS settings, 
-	h.settings_override AS settings_override,
-	hm.status AS status,
+	
+	-- Settings
+	json_patch( COALESCE( s.info, '{}' ), h.settings_override ) AS settings,
+	
+	-- Metadata
 	hm.priority AS priority,
 	hm.is_fixed_priority AS is_fixed_priority,
-	u.label AS status_label,
-	u.is_unique AS status_is_unique,
-	u.weight AS status_weight,
-	u.status AS status_value
 	
-	FROM handlers h
-	JOIN handler_meta hm ON h.id = hm.handler_id
-	LEFT JOIN settings s ON h.setting_id = se.id
-	LEFT JOIN statuses u ON h.status = u.id;-- --
+	-- Status metadata
+	hm.status AS status_id,
+	st.label AS status_label,
+	st.is_unique AS status_is_unique,
+	st.weight AS status_weight,
+	st.code_flag AS status_code_flag,
+	json_patch( COALESCE( ss.info, '{}' ), st.settings_override ) AS status_settings
+	
+FROM handlers h
+JOIN handler_meta hm ON h.id = hm.handler_id
+LEFT JOIN settings s ON h.setting_id = s.id
+LEFT JOIN statuses st ON hm.status = st.id
+LEFT JOIN settings ss ON st.setting_id = ss.id;-- --
+
+CREATE VIEW handler_object_view AS SELECT
+	h.id AS id,
+	h.controller AS controller,
+	
+	json_patch( COALESCE( s.info, '{}' ), h.settings_override ) AS settings,
+	
+	hm.priority AS priority,
+	hm.is_fixed_priority AS is_fixed_priority,
+	
+	-- Status JSON object
+	json_object(
+		'id', hm.status,
+		'label', st.label,
+		'is_unique', st.is_unique,
+		'is_shared', st.is_shared,
+		'is_onoff', st.is_onoff,
+		'weight', st.weight,
+		'code_flag', st.code_flag,
+		'settings', json_patch( COALESCE( ss.info, '{}'), st.settings_override )
+	) AS status
+
+FROM handlers h
+JOIN handler_meta hm ON h.id = hm.handler_id
+LEFT JOIN settings s ON h.setting_id = s.id
+LEFT JOIN statuses st ON hm.status = st.id
+LEFT JOIN settings ss ON st.setting_id = ss.id;
+
+
 
 -- Actions
 CREATE TABLE events (
@@ -1647,7 +1843,7 @@ CREATE TABLE request_events (
 	
 	CONSTRAINT fk_event_site
 		FOREIGN KEY ( site_id ) 
-		REFERENCES site ( id )
+		REFERENCES sites ( id )
 		ON DELETE CASCADE,
 	
 	CONSTRAINT fk_request_event
@@ -1658,6 +1854,44 @@ CREATE TABLE request_events (
 CREATE UNIQUE INDEX idx_evemt_pattern ON 
 	request_events ( site_id, event_id, verb, pattern );-- --
 CREATE INDEX idx_event_verb ON request_events ( verb );-- --
+
+CREATE VIEW request_dispatch_view AS SELECT
+	re.id AS request_event_id,
+	re.site_id AS site_id,
+	re.verb AS verb,
+	re.pattern AS pattern,
+	
+	-- Event metadata
+	e.id AS event_id,
+	e.name AS event_name,
+	e.params AS event_params,
+	e.status AS event_status_id,
+	es.label AS event_status_label,
+	es.is_unique AS event_status_is_unique,
+	es.weight AS event_status_weight,
+	es.code_flag AS event_status_code_flag,
+	json_patch( COALESCE( eset.info, '{}' ), e.params ) AS event_settings,
+	
+	-- Handler metadata
+	h.handler_id AS handler_id,
+	h.controller AS handler_controller,
+	h.settings AS handler_settings,
+	h.priority AS handler_priority,
+	h.is_fixed_priority AS handler_is_fixed_priority,
+	h.status_id AS handler_status_id,
+	h.status_label AS handler_status_label,
+	h.status_is_unique AS handler_status_is_unique,
+	h.status_weight AS handler_status_weight,
+	h.status_code_flag AS handler_status_code_flag,
+	h.status_settings AS handler_status_settings
+
+FROM request_events re
+JOIN events e ON re.event_id = e.id
+LEFT JOIN statuses es ON e.status = es.id
+LEFT JOIN settings eset ON es.setting_id = eset.id
+LEFT JOIN event_handlers eh ON e.id = eh.event_id
+LEFT JOIN handler_view h ON eh.handler_id = h.handler_id
+ORDER BY re.site_id, re.verb, re.pattern, h.priority DESC;-- --
 
 
 
@@ -1735,7 +1969,7 @@ CREATE INDEX idx_workspace_language ON workspace_desc ( language_id )
 CREATE TRIGGER workspace_insert AFTER INSERT ON workspaces FOR EACH ROW 
 BEGIN
 	INSERT INTO workspace_meta ( workspace_id, urn ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
+		VALUES ( NEW.id, ( SELECT id FROM uuid LIMIT 1 ) );
 END;-- --
 
 CREATE TRIGGER workspace_update AFTER UPDATE on workspaces FOR EACH ROW
@@ -1834,7 +2068,7 @@ CREATE INDEX idx_collection_language ON collection_desc ( language_id )
 CREATE TRIGGER collection_insert AFTER INSERT ON collections FOR EACH ROW 
 BEGIN
 	INSERT INTO collection_meta ( collection_id, urn ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
+		VALUES ( NEW.id, ( SELECT id FROM uuid LIMIT 1 ) );
 END;-- --
 
 CREATE TRIGGER collection_update AFTER UPDATE ON collections FOR EACH ROW
@@ -1939,7 +2173,7 @@ USING fts5(
 CREATE TRIGGER category_insert AFTER INSERT ON categories FOR EACH ROW 
 BEGIN
 	INSERT INTO category_meta ( category_id, urn ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
+		VALUES ( NEW.id, ( SELECT id FROM uuid LIMIT 1 ) );
 END;-- --
 
 -- Category update
@@ -2213,7 +2447,7 @@ CREATE UNIQUE INDEX idx_entry_collection ON
 CREATE TRIGGER entry_insert AFTER INSERT ON entries FOR EACH ROW
 BEGIN
 	INSERT INTO entry_meta( entry_id, urn ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid_v7 ) );
+		VALUES ( NEW.id, ( SELECT id FROM uuid_v7 LIMIT 1 ) );
 END;-- --
 
 -- Entry meta update
@@ -2329,7 +2563,7 @@ USING fts5(
 
 CREATE TRIGGER person_insert AFTER INSERT ON persons FOR EACH ROW
 BEGIN
-	UPDATE pserons SET urn = ( SELECT id FROM uuid )
+	UPDATE pserons SET urn = ( SELECT id FROM uuid LIMIT 1 )
 		WHERE id = NEW.id;
 END;-- --
 
@@ -2778,7 +3012,7 @@ CREATE UNIQUE INDEX idx_resource_urn ON resource_meta ( urn );-- --
 CREATE TRIGGER resource_insert AFTER INSERT ON resources FOR EACH ROW
 BEGIN
 	INSERT INTO resource_meta( resource_id, urn ) 
-		VALUES ( NEW.id, ( SELECT id FROM uuid ) );
+		VALUES ( NEW.id, ( SELECT id FROM uuid LIMIT 1 ) );
 END;-- --
 
 CREATE TRIGGER resource_update AFTER UPDATE ON places FOR EACH ROW
