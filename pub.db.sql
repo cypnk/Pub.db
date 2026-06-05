@@ -37,15 +37,7 @@ CREATE VIEW uuid_v7 AS SELECT lower(
 
 
 
--- Update/upgrade tracking
-CREATE TABLE versions (
-	version_id INTEGER PRIMARY KEY AUTOINCREMENT,
-	installed TEXT NOT NULL,
-	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);-- --
-CREATE UNIQUE INDEX idx_versions_installed ON versions ( installed );-- --
-CREATE INDEX idx_versions_created ON versions ( created );-- --
-
+-- Installation metadata
 CREATE TABLE IF NOT EXISTS schema_meta (
 	version TEXT NOT NULL PRIMARY KEY,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
