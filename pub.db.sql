@@ -46,6 +46,24 @@ CREATE TABLE versions (
 CREATE UNIQUE INDEX idx_versions_installed ON versions ( installed );-- --
 CREATE INDEX idx_versions_created ON versions ( created );-- --
 
+CREATE TABLE IF NOT EXISTS schema_meta (
+	version TEXT NOT NULL PRIMARY KEY,
+	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	comments TEXT
+);-- --
+
+CREATE TABLE IF NOT EXISTS maintenance_meta (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	settings TEXT NOT NULL DEFAULT '{}'
+);-- --
+
+CREATE TRIGGER maintenance_meta_update BEFORE UPDATE ON maintenance_meta FOR EACH ROW
+BEGIN
+	UPDATE maintenance_meta SET updated = CURRENT_TIMESTAMP
+		WHERE id = NEW.id;
+END;-- --
+
 
 -- Core information
 
