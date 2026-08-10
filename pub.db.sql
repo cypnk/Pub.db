@@ -689,7 +689,7 @@ USING fts5(
 	url,
 	content='site_meta',
 	content_rowid='site_id',
-	tokenize='unicode61 tokenchars=-_ separators=/*'
+	tokenize="unicode61 tokenchars '-_' separators '/*'"
 );-- --
 
 
@@ -737,7 +737,7 @@ CREATE VIEW sites_enabled AS SELECT
 	s.basepath AS basepath, 
 	s.is_active AS is_active,
 	s.is_maintenance AS is_maintenance,
-	GROUP_CONCAT( DISTINCT a.basename ORDER BY a.basename ) AS base_alias,
+	GROUP_CONCAT( DISTINCT a.basename ) AS base_alias,
 	sm.url AS url,
 	sm.created AS created,
 	sm.updated AS updated,
@@ -847,7 +847,7 @@ USING fts5(
 	user_clean,
 	content='users',
 	content_rowid='id',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 
@@ -2178,7 +2178,7 @@ USING fts5(
 	label,
 	content='category_desc',
 	content_rowid='rowid',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 -- New category, generate UUID
@@ -2341,7 +2341,7 @@ USING fts5(
 	summary,
 	content='entry_desc',
 	content_rowid='rowid',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 -- Revision history
@@ -2385,7 +2385,7 @@ USING fts5(
 	plain,
 	content='entry_content',
 	content_rowid='id',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 
@@ -2502,7 +2502,7 @@ CREATE TABLE entry_sources (
 	source_entry_id INTEGER NOT NULL REFERENCES entries ( id ) 
 		ON DELETE CASCADE,
 		
-	PRIMARY KEY ( node_id, source_node_id )
+	PRIMARY KEY ( entry_id, source_entry_id )
 );-- --
 
 -- Hierarchy
@@ -2572,7 +2572,7 @@ USING fts5(
 	bio,
 	content='person_desc',
 	content_rowid='rowid',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 CREATE TRIGGER person_insert AFTER INSERT ON persons FOR EACH ROW
@@ -2857,7 +2857,7 @@ USING fts5(
 	label,
 	content='place_labels',
 	content_rowid='rowid',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 CREATE TRIGGER place_insert AFTER INSERT ON places FOR EACH ROW
@@ -3069,7 +3069,7 @@ USING fts5(
 	description,
 	content='resource_labels',
 	content_rowid='rowid',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 
@@ -3123,7 +3123,7 @@ USING fts5(
 	metaphones,
 	content='phrase_meta',
 	content_rowid='id',
-	tokenize='unicode61'
+	tokenize="unicode61"
 );-- --
 
 
@@ -3285,9 +3285,9 @@ SELECT
 		)
 	) AS category_json
 FROM categories c
-LEFT JOIN category_meta cm ON c.id = cm.category_id
-LEFT JOIN statuses cs ON cm.status = cs.id
-LEFT JOIN settings css ON cs.setting_id ON css.id;
+LEFT JOIN category_meta cm ON c.id = cm.category_id 
+LEFT JOIN statuses cs ON cm.status = cs.id 
+LEFT JOIN settings css ON c.setting_id = css.id;
 
 -- Collection
 -- Usage:
@@ -3457,15 +3457,10 @@ CREATE VIEW service_view AS SELECT
 			'weight', st.weight,
 			'code_flag', st.code_flag,
 			'settings', json_patch( COALESCE( sst.info, '{}' ), st.settings_override )
-		),
+		)
 	) service_json
 FROM sites s
 INNER JOIN site_workspaces sw ON s.id = sw.site_id
 LEFT JOIN settings ss ON s.setting_id = ss.id
 LEFT JOIN statuses st ON s.status = st.id
 LEFT JOIN settings sst ON st.setting_id = sst.id;
-
-
-
-
-
