@@ -689,7 +689,7 @@ USING fts5(
 	url,
 	content='site_meta',
 	content_rowid='site_id',
-	tokenize="unicode61 tokenchars '-_' separators '/*'"
+	tokenize='unicode61 tokenchars ''-_'' separators ''/*'''
 );-- --
 
 
@@ -847,7 +847,7 @@ USING fts5(
 	user_clean,
 	content='users',
 	content_rowid='id',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 
@@ -2178,7 +2178,7 @@ USING fts5(
 	label,
 	content='category_desc',
 	content_rowid='rowid',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 -- New category, generate UUID
@@ -2341,7 +2341,7 @@ USING fts5(
 	summary,
 	content='entry_desc',
 	content_rowid='rowid',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 -- Revision history
@@ -2385,7 +2385,7 @@ USING fts5(
 	plain,
 	content='entry_content',
 	content_rowid='id',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 
@@ -2572,7 +2572,7 @@ USING fts5(
 	bio,
 	content='person_desc',
 	content_rowid='rowid',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 CREATE TRIGGER person_insert AFTER INSERT ON persons FOR EACH ROW
@@ -2857,7 +2857,7 @@ USING fts5(
 	label,
 	content='place_labels',
 	content_rowid='rowid',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 CREATE TRIGGER place_insert AFTER INSERT ON places FOR EACH ROW
@@ -3069,7 +3069,7 @@ USING fts5(
 	description,
 	content='resource_labels',
 	content_rowid='rowid',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 
@@ -3123,7 +3123,7 @@ USING fts5(
 	metaphones,
 	content='phrase_meta',
 	content_rowid='id',
-	tokenize="unicode61"
+	tokenize='unicode61'
 );-- --
 
 
